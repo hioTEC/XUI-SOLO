@@ -665,6 +665,188 @@ EOF
     print_info "Hysteria2 端口: ${HYSTERIA_PORT}"
 }
 
+# 安装 SOLO 模式（Master + 本地 Worker）
+install_solo() {
+    print_info "开始 SOLO 模式安装（Master + 本地 Worker 一体化部署）..."
+    echo ""
+    
+    read -p "请输入域名 (如 example.com): " domain
+    domain=$(echo "$domain" | tr -d ' ')
+    
+    if [ -z "$domain" ]; then
+        print_error "域名不能为空"
+        exit 1
+    fi
+    
+    check_dns "$domain"
+    
+    # 生成集群密钥
+    CLUSTER_SECRET=$(generate_random_string 32)
+    ADMIN_PASSWORD=$(generate_random_string 16)
+    POSTGRES_PASSWORD=$(generate_random_string 16)
+    REDIS_PASSWORD=$(generate_random_string 16)
+    
+    print_info "生成安全密钥..."
+    echo ""
+    
+    # 生成节点 UUID 和密钥
+    NODE_UUID=$(generate_uuid)
+    X25519_KEYS=$(generate_x25519_keypair)
+    
+    if [ -z "$X25519_KEYS" ]; then
+        print_warning "无法生成 x25519 密钥对，使用随机字符串代替"
+        X25519_PRIVATE_KEY=$(generate_random_string 32)
+        X25519_PUBLIC_KEY=$(generate_random_string 32)
+    else
+        X25519_PRIVATE_KEY=$(echo "$X25519_KEYS" | head -n1)
+        X25519_PUBLIC_KEY=$(echo "$X25519_KEYS" | tail -n1)
+    fi
+    
+    # 生成安全的 API 路径
+    API_PATH=$(echo -n "${CLUSTER_SECRET}:$(date +%s):${NODE_UUID}" | sha256sum | cut -c1-16)
+    HYSTERIA_PASSWORD=$(generate_random_string 16)
+    
+    # 创建目录结构
+    print_info "创建目录结构..."
+    mkdir -p /opt/xray-cluster/master
+    mkdir -p /opt/xray-cluster/master/data
+    mkdir -p /opt/xray-cluster/master/caddy_data
+    mkdir -p /opt/xray-cluster/master/web
+    mkdir -p /opt/xray-cluster/master/templates
+    mkdir -p /opt/xray-cluster/master/static
+    
+    mkdir -p /opt/xray-cluster/node
+    mkdir -p /opt/xray-cluster/node/xray_config
+    mkdir -p /opt/xray-cluster/node/caddy_data
+    mkdir -p /opt/xray-cluster/node/agent
+    mkdir -p /opt/xray-cluster/node/ssl
+    
+    # 复制应用文件
+    print_info "复制应用文件..."
+    cp -r master/* /opt/xray-cluster/master/ 2>/dev/null || true
+    cp -r node/* /opt/xray-cluster/node/ 2>/dev/null || true
+    cp requirements.txt /opt/xray-cluster/master/ 2>/dev/null || true
+    cp requirements.txt /opt/xray-cluster/node/ 2>/dev/null || true
+    
+    # 创建 Master .env 文件
+    cat > /opt/xray-cluster/master/.env << EOF
+# Master 配置
+MASTER_DOMAIN=$domain
+CLUSTER_SECRET=$CLUSTER_SECRET
+ADMIN_USER=admin
+ADMIN_PASSWORD=$ADMIN_PASSWORD
+
+# 数据库配置
+POSTGRES_USER=xray_admin
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+POSTGRES_DB=xray_cluster
+
+# Redis 配置
+REDIS_PASSWORD=$REDIS_PASSWORD
+
+# Caddy 配置
+CADDY_EMAIL=admin@$domain
+EOF
+    
+    # 创建 Node .env 文件
+    cat > /opt/xray-cluster/node/.env << EOF
+# Node 配置
+NODE_DOMAIN=$domain
+MASTER_DOMAIN=$domain
+CLUSTER_SECRET=$CLUSTER_SECRET
+NODE_UUID=$NODE_UUID
+X25519_PRIVATE_KEY=$X25519_PRIVATE_KEY
+X25519_PUBLIC_KEY=$X25519_PUBLIC_KEY
+API_PATH=$API_PATH
+
+# Hysteria2 配置
+HYSTERIA_PORT=50000
+HYSTERIA_PASSWORD=$HYSTERIA_PASSWORD
+
+# Caddy 配置
+CADDY_EMAIL=admin@$domain
+EOF
+    
+    # 启动 Master 服务
+    print_info "启动 Master 控制面板..."
+    cd /opt/xray-cluster/master
+    docker-compose up -d
+    
+    # 等待 Master 启动
+    print_info "等待 Master 服务启动..."
+    sleep 10
+    
+    # 启动 Node 服务
+    print_info "启动本地 Worker 节点..."
+    cd /opt/xray-cluster/node
+    docker-compose up -d
+    
+    # 等待服务完全启动
+    print_info "等待服务完全启动..."
+    sleep 5
+    
+    # 显示安装信息
+    echo ""
+    echo "========================================"
+    print_success "SOLO 模式安装完成！"
+    echo "========================================"
+    echo ""
+    print_info "访问信息:"
+    echo "  控制面板: https://${domain}"
+    echo "  管理员账号: admin"
+    echo "  管理员密码: ${ADMIN_PASSWORD}"
+    echo ""
+    print_info "集群信息:"
+    echo "  集群密钥: ${CLUSTER_SECRET}"
+    echo "  节点UUID: ${NODE_UUID}"
+    echo ""
+    print_info "本地 Worker 已自动部署并注册"
+    echo "  节点域名: ${domain}"
+    echo "  API路径: /${API_PATH}"
+    echo "  Hysteria2端口: 50000"
+    echo ""
+    print_warning "重要提示:"
+    echo "  1. 请妥善保存上述信息"
+    echo "  2. 首次登录后请立即修改管理员密码"
+    echo "  3. 确保防火墙已开放 80, 443, 50000 端口"
+    echo "  4. 等待 1-2 分钟让 Caddy 自动获取 SSL 证书"
+    echo ""
+    print_info "添加更多 Worker 节点时使用集群密钥"
+    echo ""
+    
+    # 保存信息到文件
+    cat > /opt/xray-cluster/INSTALL_INFO.txt << EOF
+SOLO 模式安装信息
+安装时间: $(date)
+
+访问信息:
+  控制面板: https://${domain}
+  管理员账号: admin
+  管理员密码: ${ADMIN_PASSWORD}
+
+集群信息:
+  集群密钥: ${CLUSTER_SECRET}
+  节点UUID: ${NODE_UUID}
+
+本地 Worker:
+  节点域名: ${domain}
+  API路径: /${API_PATH}
+  Hysteria2端口: 50000
+  Hysteria2密码: ${HYSTERIA_PASSWORD}
+
+数据库:
+  用户: xray_admin
+  密码: ${POSTGRES_PASSWORD}
+  数据库: xray_cluster
+
+Redis:
+  密码: ${REDIS_PASSWORD}
+EOF
+    
+    print_success "安装信息已保存到: /opt/xray-cluster/INSTALL_INFO.txt"
+    echo ""
+}
+
 # 主菜单
 main_menu() {
     clear
@@ -673,31 +855,36 @@ main_menu() {
     echo "========================================"
     echo ""
     echo "请选择安装类型:"
-    echo "1. 安装 Master 节点 (控制面板)"
-    echo "2. 安装 Node 节点 (代理节点)"
-    echo "3. 查看服务状态"
-    echo "4. 卸载服务"
-    echo "5. 退出"
+    echo "1. SOLO 模式 (推荐) - Master + 本地 Worker 一体化"
+    echo "2. 安装 Master 节点 (控制面板)"
+    echo "3. 安装 Worker 节点 (代理节点)"
+    echo "4. 查看服务状态"
+    echo "5. 卸载服务"
+    echo "6. 退出"
     echo ""
     
-    read -p "请输入选择 (1-5): " choice
+    read -p "请输入选择 (1-6): " choice
     
     case $choice in
         1)
             check_docker
-            install_master
+            install_solo
             ;;
         2)
             check_docker
-            install_node
+            install_master
             ;;
         3)
-            check_service_status
+            check_docker
+            install_node
             ;;
         4)
-            uninstall_service
+            check_service_status
             ;;
         5)
+            uninstall_service
+            ;;
+        6)
             echo "退出安装程序"
             exit 0
             ;;
@@ -754,7 +941,10 @@ main() {
     fi
     
     # 解析命令行参数
-    if [ "$1" = "--master" ]; then
+    if [ "$1" = "--solo" ]; then
+        check_docker
+        install_solo
+    elif [ "$1" = "--master" ]; then
         check_docker
         install_master
     elif [ "$1" = "--node" ]; then
