@@ -85,21 +85,47 @@ check_docker() {
         install_docker
     fi
     
-    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-        print_error "Docker Compose 未安装"
-        print_info "尝试安装 Docker Compose..."
+    # 检查 docker-compose 或 docker compose plugin
+    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null 2>&1; then
+        print_warning "Docker Compose 未安装，正在安装..."
         
-        # 尝试使用 docker compose (plugin)
-        if docker compose version &> /dev/null; then
-            # 创建 docker-compose 别名
-            echo '#!/bin/bash' > /usr/local/bin/docker-compose
-            echo 'docker compose "$@"' >> /usr/local/bin/docker-compose
-            chmod +x /usr/local/bin/docker-compose
+        # 尝试安装 Docker Compose V2 (plugin)
+        if docker --version | grep -q "Docker version"; then
+            print_info "安装 Docker Compose V2 插件..."
+            
+            # 创建插件目录
+            mkdir -p /usr/local/lib/docker/cli-plugins
+            
+            # 下载 Docker Compose V2
+            COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d'"' -f4)
+            curl -SL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
+                -o /usr/local/lib/docker/cli-plugins/docker-compose
+            chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+            
+            # 创建 docker-compose 命令别名
+            if ! command -v docker-compose &> /dev/null; then
+                cat > /usr/local/bin/docker-compose << 'EOFDC'
+#!/bin/bash
+docker compose "$@"
+EOFDC
+                chmod +x /usr/local/bin/docker-compose
+            fi
+            
+            print_success "Docker Compose V2 安装完成"
         else
-            # 安装独立的 docker-compose
-            curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-            chmod +x /usr/local/bin/docker-compose
+            print_error "Docker 未正确安装"
+            exit 1
         fi
+    fi
+    
+    # 验证安装
+    if command -v docker-compose &> /dev/null; then
+        print_success "docker-compose 可用: $(docker-compose version --short 2>/dev/null || echo 'V2')"
+    elif docker compose version &> /dev/null 2>&1; then
+        print_success "docker compose 可用: $(docker compose version --short 2>/dev/null || echo 'V2')"
+    else
+        print_error "Docker Compose 安装失败"
+        exit 1
     fi
     
     if ! docker info &> /dev/null; then
@@ -771,6 +797,33 @@ install_solo() {
     print_info "SOLO 模式使用 Xray 作为网关，统一管理 443 端口"
     echo ""
     
+    # 检查是否已有安装
+    local KEEP_CONFIG=false
+    if [ -f "/opt/xray-cluster/INSTALL_INFO.txt" ]; then
+        print_warning "检测到已有安装"
+        if [ -t 0 ]; then
+            read -p "是否保留现有配置？(y/n): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                KEEP_CONFIG=true
+                print_info "将保留现有配置和数据"
+            fi
+        fi
+    fi
+    
+    # 如果保留配置，尝试读取现有域名
+    if [ "$KEEP_CONFIG" = true ] && [ -f "/opt/xray-cluster/master/.env" ]; then
+        if [ -z "$panel_domain" ]; then
+            panel_domain=$(grep "^PANEL_DOMAIN=" /opt/xray-cluster/master/.env | cut -d'=' -f2)
+        fi
+        if [ -z "$node_domain" ] && [ -f "/opt/xray-cluster/node/.env" ]; then
+            node_domain=$(grep "^NODE_DOMAIN=" /opt/xray-cluster/node/.env | cut -d'=' -f2)
+        fi
+        if [ -n "$panel_domain" ] && [ -n "$node_domain" ]; then
+            print_info "从现有配置读取域名: $panel_domain, $node_domain"
+        fi
+    fi
+    
     # 如果没有提供域名参数，则提示输入
     if [ -z "$panel_domain" ]; then
         # 检查是否通过管道运行
@@ -779,8 +832,8 @@ install_solo() {
             read -p "请输入节点域名 (如 node.example.com): " node_domain
         else
             print_error "检测到通过管道运行，必须提供域名参数"
-            print_info "使用方法: curl -fsSL ... | sudo bash -s -- --solo --panel panel.com --node node.com"
-            print_info "或下载后运行: sudo bash install.sh --solo --panel panel.com --node node.com"
+            print_info "使用方法: curl -fsSL ... | sudo bash -s -- --solo --panel panel.com --node-domain node.com"
+            print_info "或下载后运行: sudo bash install.sh --solo --panel panel.com --node-domain node.com"
             exit 1
         fi
     fi
@@ -807,18 +860,51 @@ install_solo() {
     print_warning "请确保两个域名都已正确解析到本服务器 IP"
     sleep 2
     
-    # 生成集群密钥
-    CLUSTER_SECRET=$(generate_random_string 32)
-    ADMIN_PASSWORD=$(generate_random_string 16)
-    POSTGRES_PASSWORD=$(generate_random_string 16)
-    REDIS_PASSWORD=$(generate_random_string 16)
+    # 生成或读取密钥
+    if [ "$KEEP_CONFIG" = true ] && [ -f "/opt/xray-cluster/master/.env" ]; then
+        print_info "读取现有密钥..."
+        CLUSTER_SECRET=$(grep "^CLUSTER_SECRET=" /opt/xray-cluster/master/.env | cut -d'=' -f2)
+        ADMIN_PASSWORD=$(grep "^ADMIN_PASSWORD=" /opt/xray-cluster/master/.env | cut -d'=' -f2)
+        POSTGRES_PASSWORD=$(grep "^POSTGRES_PASSWORD=" /opt/xray-cluster/master/.env | cut -d'=' -f2)
+        REDIS_PASSWORD=$(grep "^REDIS_PASSWORD=" /opt/xray-cluster/master/.env | cut -d'=' -f2)
+        
+        if [ -f "/opt/xray-cluster/node/.env" ]; then
+            NODE_UUID=$(grep "^NODE_UUID=" /opt/xray-cluster/node/.env | cut -d'=' -f2)
+            X25519_PRIVATE_KEY=$(grep "^X25519_PRIVATE_KEY=" /opt/xray-cluster/node/.env | cut -d'=' -f2)
+            X25519_PUBLIC_KEY=$(grep "^X25519_PUBLIC_KEY=" /opt/xray-cluster/node/.env | cut -d'=' -f2)
+            API_PATH=$(grep "^API_PATH=" /opt/xray-cluster/node/.env | cut -d'=' -f2)
+            HYSTERIA_PASSWORD=$(grep "^HYSTERIA_PASSWORD=" /opt/xray-cluster/node/.env | cut -d'=' -f2)
+        fi
+        print_success "已读取现有配置"
+    fi
+    
+    # 如果没有读取到，则生成新的
+    if [ -z "$CLUSTER_SECRET" ]; then
+        CLUSTER_SECRET=$(generate_random_string 32)
+    fi
+    if [ -z "$ADMIN_PASSWORD" ]; then
+        ADMIN_PASSWORD=$(generate_random_string 16)
+    fi
+    if [ -z "$POSTGRES_PASSWORD" ]; then
+        POSTGRES_PASSWORD=$(generate_random_string 16)
+    fi
+    if [ -z "$REDIS_PASSWORD" ]; then
+        REDIS_PASSWORD=$(generate_random_string 16)
+    fi
+    if [ -z "$HYSTERIA_PASSWORD" ]; then
+        HYSTERIA_PASSWORD=$(generate_random_string 16)
+    fi
     
     print_info "生成安全密钥..."
     echo ""
     
     # 生成节点 UUID 和密钥
-    NODE_UUID=$(generate_uuid)
-    X25519_KEYS=$(generate_x25519_keypair)
+    if [ -z "$NODE_UUID" ]; then
+        NODE_UUID=$(generate_uuid)
+    fi
+    if [ -z "$X25519_PRIVATE_KEY" ]; then
+        X25519_KEYS=$(generate_x25519_keypair)
+    fi
     
     if [ -z "$X25519_KEYS" ]; then
         print_warning "无法生成 x25519 密钥对，使用随机字符串代替"
@@ -879,12 +965,13 @@ install_solo() {
     if [ ! -f "/opt/xray-cluster/master/requirements.txt" ]; then
         print_info "创建 requirements.txt..."
         cat > /opt/xray-cluster/master/requirements.txt << 'EOFREQ'
-Flask==2.3.3
-Flask-SQLAlchemy==3.0.5
-Flask-Login==0.6.2
-Flask-Talisman==1.0.0
-psycopg2-binary==2.9.7
-redis==4.6.0
+Flask==3.0.0
+Flask-SQLAlchemy==3.1.1
+Flask-Login==0.6.3
+Flask-Talisman==1.1.0
+Werkzeug==3.0.1
+psycopg2-binary==2.9.9
+redis==5.0.1
 requests==2.31.0
 python-dotenv==1.0.0
 gunicorn==21.2.0
@@ -1167,7 +1254,7 @@ services:
         target: /var/log/xray
     cap_add:
       - NET_ADMIN
-    command: ["xray", "run", "-config", "/etc/xray/config.json"]
+    command: ["run", "-config", "/etc/xray/config.json"]
 
   agent:
     build:
@@ -1353,10 +1440,17 @@ EXPOSE 8080
 CMD ["python", "agent.py"]
 EOFDOCKER
     
+    # 停止现有服务（如果保留配置）
+    if [ "$KEEP_CONFIG" = true ]; then
+        print_info "停止现有服务..."
+        cd /opt/xray-cluster/master && docker-compose down 2>/dev/null || true
+        cd /opt/xray-cluster/node && docker-compose down 2>/dev/null || true
+    fi
+    
     # 启动 Master 服务
     print_info "启动 Master 控制面板..."
     cd /opt/xray-cluster/master
-    docker-compose up -d
+    docker-compose up -d --build
     
     # 等待 Master 启动
     print_info "等待 Master 服务启动..."
@@ -1369,8 +1463,8 @@ EOFDOCKER
     # 清理孤立容器
     docker-compose down --remove-orphans 2>/dev/null || true
     
-    # 启动服务
-    docker-compose up -d
+    # 启动服务（重建以应用新配置）
+    docker-compose up -d --build
     
     # 等待服务完全启动
     print_info "等待服务完全启动..."
