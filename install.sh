@@ -34,15 +34,85 @@ check_command() {
     fi
 }
 
-# 检查 Docker 和 Docker Compose
-check_docker() {
-    check_command docker
-    check_command docker-compose
+# 安装 Docker
+install_docker() {
+    print_info "检测到 Docker 未安装，开始安装..."
     
-    if ! docker info &> /dev/null; then
-        print_error "Docker 服务未运行，请启动 Docker"
+    # 检测操作系统
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS=$ID
+    else
+        print_error "无法检测操作系统"
         exit 1
     fi
+    
+    # 安装 Docker
+    if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
+        apt-get update
+        apt-get install -y ca-certificates curl gnupg
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/$OS/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        chmod a+r /etc/apt/keyrings/docker.gpg
+        
+        echo \
+          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$OS \
+          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+          tee /etc/apt/sources.list.d/docker.list > /dev/null
+        
+        apt-get update
+        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
+        yum install -y yum-utils
+        yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+        yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    else
+        print_error "不支持的操作系统: $OS"
+        print_info "请手动安装 Docker: https://docs.docker.com/engine/install/"
+        exit 1
+    fi
+    
+    # 启动 Docker
+    systemctl start docker
+    systemctl enable docker
+    
+    print_success "Docker 安装完成"
+}
+
+# 检查 Docker 和 Docker Compose
+check_docker() {
+    if ! command -v docker &> /dev/null; then
+        install_docker
+    fi
+    
+    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+        print_error "Docker Compose 未安装"
+        print_info "尝试安装 Docker Compose..."
+        
+        # 尝试使用 docker compose (plugin)
+        if docker compose version &> /dev/null; then
+            # 创建 docker-compose 别名
+            echo '#!/bin/bash' > /usr/local/bin/docker-compose
+            echo 'docker compose "$@"' >> /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+        else
+            # 安装独立的 docker-compose
+            curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+        fi
+    fi
+    
+    if ! docker info &> /dev/null; then
+        print_error "Docker 服务未运行，正在启动..."
+        systemctl start docker
+        sleep 2
+        if ! docker info &> /dev/null; then
+            print_error "Docker 服务启动失败"
+            exit 1
+        fi
+    fi
+    
+    print_success "Docker 环境检查通过"
 }
 
 # 生成随机字符串
@@ -721,12 +791,30 @@ install_solo() {
     mkdir -p /opt/xray-cluster/node/agent
     mkdir -p /opt/xray-cluster/node/ssl
     
-    # 复制应用文件
-    print_info "复制应用文件..."
-    cp -r master/* /opt/xray-cluster/master/ 2>/dev/null || true
-    cp -r node/* /opt/xray-cluster/node/ 2>/dev/null || true
-    cp requirements.txt /opt/xray-cluster/master/ 2>/dev/null || true
-    cp requirements.txt /opt/xray-cluster/node/ 2>/dev/null || true
+    # 复制应用文件（如果存在）
+    print_info "准备应用文件..."
+    if [ -d "master" ] && [ -f "master/app.py" ]; then
+        print_info "检测到源代码，复制文件..."
+        cp -r master/* /opt/xray-cluster/master/ 2>/dev/null || true
+        cp -r node/* /opt/xray-cluster/node/ 2>/dev/null || true
+        cp requirements.txt /opt/xray-cluster/master/ 2>/dev/null || true
+        cp requirements.txt /opt/xray-cluster/node/ 2>/dev/null || true
+    else
+        print_warning "未检测到源代码目录，将使用 Git 克隆..."
+        print_info "克隆项目代码..."
+        cd /tmp
+        git clone https://github.com/hioTEC/XUI-SOLO.git xui-solo-temp 2>/dev/null || {
+            print_error "无法克隆代码仓库"
+            print_info "请确保已安装 git 或手动下载项目代码"
+            exit 1
+        }
+        cp -r xui-solo-temp/master/* /opt/xray-cluster/master/ 2>/dev/null || true
+        cp -r xui-solo-temp/node/* /opt/xray-cluster/node/ 2>/dev/null || true
+        cp xui-solo-temp/requirements.txt /opt/xray-cluster/master/ 2>/dev/null || true
+        cp xui-solo-temp/requirements.txt /opt/xray-cluster/node/ 2>/dev/null || true
+        rm -rf xui-solo-temp
+        cd - > /dev/null
+    fi
     
     # 创建 Master .env 文件
     cat > /opt/xray-cluster/master/.env << EOF
@@ -748,6 +836,131 @@ REDIS_PASSWORD=$REDIS_PASSWORD
 CADDY_EMAIL=admin@$domain
 EOF
     
+    # 创建 Master Docker Compose 文件
+    print_info "创建 Master 配置文件..."
+    cat > /opt/xray-cluster/master/docker-compose.yml << 'EOFCOMPOSE'
+version: '3.8'
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: xray-master-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - xray-master-net
+    environment:
+      - CADDY_EMAIL=${CADDY_EMAIL}
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: xray-master-postgres
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    networks:
+      - xray-master-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: xray-master-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    networks:
+      - xray-master-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: xray-master-web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - MASTER_DOMAIN=${MASTER_DOMAIN}
+      - CLUSTER_SECRET=${CLUSTER_SECRET}
+      - ADMIN_USER=${ADMIN_USER}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+    networks:
+      - xray-master-net
+
+networks:
+  xray-master-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+EOFCOMPOSE
+
+    # 创建 Master Caddyfile
+    cat > /opt/xray-cluster/master/Caddyfile << EOFCADDY
+${domain} {
+    encode gzip
+    
+    reverse_proxy web:5000 {
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+    
+    log {
+        output file /data/access.log {
+            roll_size 10MiB
+            roll_keep 5
+        }
+    }
+}
+EOFCADDY
+
+    # 创建 Web Dockerfile
+    cat > /opt/xray-cluster/master/web/Dockerfile << 'EOFDOCKER'
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY ../requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY ../app.py .
+COPY ../templates ./templates
+
+EXPOSE 5000
+
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "app:app"]
+EOFDOCKER
+    
     # 创建 Node .env 文件
     cat > /opt/xray-cluster/node/.env << EOF
 # Node 配置
@@ -766,6 +979,141 @@ HYSTERIA_PASSWORD=$HYSTERIA_PASSWORD
 # Caddy 配置
 CADDY_EMAIL=admin@$domain
 EOF
+    
+    # 创建 Node Docker Compose 文件
+    print_info "创建 Worker 配置文件..."
+    cat > /opt/xray-cluster/node/docker-compose.yml << 'EOFCOMPOSE'
+version: '3.8'
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: xray-node-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - xray-node-net
+    environment:
+      - CADDY_EMAIL=${CADDY_EMAIL}
+
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: xray-node-xray
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "443:443/udp"
+      - "${HYSTERIA_PORT}:${HYSTERIA_PORT}/udp"
+    volumes:
+      - ./xray_config:/etc/xray:ro
+      - xray_logs:/var/log/xray
+    cap_add:
+      - NET_ADMIN
+    networks:
+      - xray-node-net
+
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+    container_name: xray-node-agent
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_UUID=${NODE_UUID}
+      - CLUSTER_SECRET=${CLUSTER_SECRET}
+      - MASTER_DOMAIN=${MASTER_DOMAIN}
+      - API_PATH=${API_PATH}
+    networks:
+      - xray-node-net
+    depends_on:
+      - xray
+
+networks:
+  xray-node-net:
+    driver: bridge
+
+volumes:
+  xray_logs:
+  caddy_data:
+  caddy_config:
+EOFCOMPOSE
+
+    # 创建 Node Caddyfile
+    cat > /opt/xray-cluster/node/Caddyfile << EOFCADDY
+:80 {
+    encode gzip
+    
+    handle_path /${API_PATH}/* {
+        reverse_proxy agent:8080
+    }
+    
+    respond "404 Not Found" 404
+}
+EOFCADDY
+
+    # 创建 Xray 配置
+    cat > /opt/xray-cluster/node/xray_config/config.json << EOFXRAY
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "${NODE_UUID}",
+            "flow": "xtls-rprx-vision"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "www.google.com:443",
+          "xver": 0,
+          "serverNames": ["www.google.com"],
+          "privateKey": "${X25519_PRIVATE_KEY}",
+          "shortIds": [""]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    }
+  ]
+}
+EOFXRAY
+
+    # 创建 Agent Dockerfile
+    cat > /opt/xray-cluster/node/agent/Dockerfile << 'EOFDOCKER'
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY ../agent.py .
+COPY ../requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+EXPOSE 8080
+
+CMD ["python", "agent.py"]
+EOFDOCKER
     
     # 启动 Master 服务
     print_info "启动 Master 控制面板..."
