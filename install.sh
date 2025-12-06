@@ -847,6 +847,8 @@ install_solo() {
     mkdir -p /opt/xray-cluster/node/caddy_data
     mkdir -p /opt/xray-cluster/node/agent
     mkdir -p /opt/xray-cluster/node/ssl
+    mkdir -p /opt/xray-cluster/node/certs
+    mkdir -p /opt/xray-cluster/node/logs
     
     # 复制应用文件（如果存在）
     print_info "准备应用文件..."
@@ -1146,9 +1148,9 @@ services:
     restart: unless-stopped
     network_mode: host
     volumes:
-      - ./xray_config:/etc/xray:ro
-      - xray_logs:/var/log/xray
-      - ./certs:/etc/xray/certs
+      - /opt/xray-cluster/node/xray_config:/etc/xray:ro
+      - /opt/xray-cluster/node/certs:/etc/xray/certs:ro
+      - /opt/xray-cluster/node/logs:/var/log/xray
     cap_add:
       - NET_ADMIN
     environment:
@@ -1177,11 +1179,6 @@ services:
 networks:
   xray-node-net:
     driver: bridge
-
-volumes:
-  xray_logs:
-  caddy_data:
-  caddy_config:
 EOFCOMPOSE
 
     # 创建 Node Caddyfile
@@ -1285,9 +1282,6 @@ EOFCADDY
 }
 EOFXRAY
 
-    # 创建证书目录和ACME脚本
-    mkdir -p /opt/xray-cluster/node/certs
-    
     # 创建ACME证书获取脚本
     cat > /opt/xray-cluster/node/get-certs.sh << 'EOFACME'
 #!/bin/bash
@@ -1350,6 +1344,11 @@ EOFDOCKER
     # 启动 Node 服务
     print_info "启动本地 Worker 节点..."
     cd /opt/xray-cluster/node
+    
+    # 清理孤立容器
+    docker-compose down --remove-orphans 2>/dev/null || true
+    
+    # 启动服务
     docker-compose up -d
     
     # 等待服务完全启动
