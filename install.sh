@@ -1327,16 +1327,6 @@ EOFCADDY
         "enabled": true,
         "destOverride": ["http", "tls"]
       }
-    },
-    {
-      "port": 80,
-      "protocol": "dokodemo-door",
-      "settings": {
-        "address": "127.0.0.1",
-        "port": 8080,
-        "network": "tcp"
-      },
-      "tag": "http-in"
     }
   ],
   "outbounds": [

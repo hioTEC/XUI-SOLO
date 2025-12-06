@@ -2,13 +2,28 @@
 
 ## SSL 证书问题
 
+### acme.sh 报错 "Cannot resolve _eab_id"
+
+**原因**：acme.sh 默认使用 ZeroSSL，需要 EAB 认证
+
+**解决**：
+```bash
+bash fix-ssl-now.sh
+```
+
+或手动修复：
+```bash
+~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+cd /opt/xray-cluster/node && bash get-certs.sh
+```
+
 ### 浏览器提示"不安全"
 
 **原因**：使用自签名证书
 
 **解决**：
 1. 点击「高级」→「继续访问」
-2. 或获取正式证书：`cd /opt/xray-cluster/node && bash get-certs.sh`
+2. 或获取正式证书：`bash fix-ssl-now.sh`
 
 ### 证书文件为空
 
@@ -58,12 +73,18 @@ ls -lh /opt/xray-cluster/node/certs/
 cd /opt/xray-cluster/node && docker-compose restart
 ```
 
+### 端口 80 返回空白页面
+
+**原因**：Xray 配置问题
+
+**解决**：
+```bash
+bash fix-ssl-now.sh
+```
+
 ### 端口被占用
 ```bash
-# 查看占用
 netstat -tlnp | grep :443
-
-# 停止冲突服务
 systemctl stop nginx
 ```
 

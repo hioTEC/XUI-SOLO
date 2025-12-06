@@ -57,18 +57,20 @@ fi
 ACME_SH="$HOME/.acme.sh/acme.sh"
 [ ! -f "$ACME_SH" ] && print_error "acme.sh 未找到" && exit 1
 
+"$ACME_SH" --set-default-ca --server letsencrypt
+
 if netstat -tlnp 2>/dev/null | grep -q ':80 ' || ss -tlnp 2>/dev/null | grep -q ':80 '; then
-    print_warning "端口 80 被占用"
-    read -p "停止 Xray? (y/n): " -n 1 -r
-    echo
-    [[ $REPLY =~ ^[Yy]$ ]] && cd /opt/xray-cluster/node && docker-compose stop xray && sleep 2 || exit 1
+    print_warning "端口 80 被占用，停止 Xray..."
+    cd /opt/xray-cluster/node && docker-compose stop xray
+    sleep 3
 fi
 
 for domain in "$PANEL_DOMAIN" "$NODE_DOMAIN"; do
     print_info "获取证书: $domain"
-    if ! "$ACME_SH" --issue -d "$domain" --standalone --httpport 80 --force 2>/dev/null; then
+    if ! "$ACME_SH" --issue -d "$domain" --standalone --httpport 80 --server letsencrypt; then
         print_error "失败: $domain"
         print_info "检查: 1) DNS解析 2) 端口80可访问 3) 防火墙"
+        print_info "运行 'dig $domain' 验证DNS"
         exit 1
     fi
 done
