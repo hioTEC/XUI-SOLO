@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}编辑节点 - {{ node.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">首页</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('node_list') }}">节点管理</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('node_detail', node_id=node.id) }}">{{ node.name }}</a></li>
+                <li class="breadcrumb-item active">编辑</li>
+            </ol>
+        </nav>
+
+        <div class="card">
+            <div class="card-header">
+                <h4 class="card-title mb-0">
+                    <i class="fas fa-edit"></i> 编辑节点: {{ node.name }}
+                </h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('edit_node', node_id=node.id) }}">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="name" class="form-label">节点名称 *</label>
+                            <input type="text" class="form-control" id="name" name="name" 
+                                   value="{{ node.name }}" required>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="domain" class="form-label">节点域名 *</label>
+                            <input type="text" class="form-control" id="domain" name="domain" 
+                                   value="{{ node.domain }}" required>
+                        </div>
+                    </div>
+                    
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0">
+                                <i class="fas fa-plug"></i> 协议配置
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <!-- VLESS 配置 -->
+                            <div class="mb-3">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="vless_enabled" 
+                                           name="vless_enabled" {{ 'checked' if node.vless_enabled }}>
+                                    <label class="form-check-label" for="vless_enabled">
+                                        <span class="badge bg-primary">VLESS</span> XTLS-Vision
+                                    </label>
+                                </div>
+                                
+                                {% if node.vless_enabled %}
+                                <div class="ms-4">
+                                    <label for="vless_flow" class="form-label small">流控模式</label>
+                                    <select class="form-select form-select-sm" id="vless_flow" name="vless_flow">
+                                        <option value="xtls-rprx-vision" {{ 'selected' if node.vless_flow == 'xtls-rprx-vision' }}>xtls-rprx-vision</option>
+                                        <option value="xtls-rprx-vision-udp443" {{ 'selected' if node.vless_flow == 'xtls-rprx-vision-udp443' }}>xtls-rprx-vision-udp443</option>
+                                        <option value="" {{ 'selected' if not node.vless_flow }}>无流控</option>
+                                    </select>
+                                </div>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- SplitHTTP 配置 -->
+                            <div class="mb-3">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="split_http_enabled" 
+                                           name="split_http_enabled" {{ 'checked' if node.split_http_enabled }}>
+                                    <label class="form-check-label" for="split_http_enabled">
+                                        <span class="badge bg-info">SplitHTTP</span> HTTP 伪装
+                                    </label>
+                                </div>
+                                
+                                {% if node.split_http_enabled %}
+                                <div class="ms-4">
+                                    <label for="split_http_path" class="form-label small">伪装路径</label>
+                                    <input type="text" class="form-control form-control-sm" id="split_http_path" 
+                                           name="split_http_path" value="{{ node.split_http_path or 'http' }}">
+                                    <div class="form-text small">建议使用随机路径增强隐蔽性</div>
+                                </div>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Hysteria2 配置 -->
+                            <div class="mb-3">
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="checkbox" id="hysteria2_enabled" 
+                                           name="hysteria2_enabled" {{ 'checked' if node.hysteria2_enabled }}>
+                                    <label class="form-check-label" for="hysteria2_enabled">
+                                        <span class="badge bg-warning">Hysteria2</span> 高速 UDP
+                                    </label>
+                                </div>
+                                
+                                {% if node.hysteria2_enabled %}
+                                <div class="ms-4">
+                                    <label for="hysteria2_port" class="form-label small">UDP 端口</label>
+                                    <input type="number" class="form-control form-control-sm" id="hysteria2_port" 
+                                           name="hysteria2_port" value="{{ node.hysteria2_port or 50000 }}" 
+                                           min="10000" max="65535">
+                                    <div class="form-text small">建议使用高位端口 (50000-60000)</div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <h6><i class="fas fa-exclamation-triangle"></i> 注意</h6>
+                        <p class="mb-0 small">
+                            修改配置后，系统会尝试同步到在线节点。<br>
+                            如果节点离线，配置将保存在面板中，待节点上线后需要手动同步。
+                        </p>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <a href="{{ url_for('node_detail', node_id=node.id) }}" class="btn btn-outline-secondary me-md-2">
+                            <i class="fas fa-times"></i> 取消
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 保存更改
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle"></i> 节点信息
+                </h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <th>UUID</th>
+                        <td><code class="small">{{ node.node_uuid }}</code></td>
+                    </tr>
+                    <tr>
+                        <th>API 路径</th>
+                        <td><code>/{{ node.api_path }}/</code></td>
+                    </tr>
+                    <tr>
+                        <th>状态</th>
+                        <td>
+                            {% if node.is_online %}
+                            <span class="badge bg-success">在线</span>
+                            {% else %}
+                            <span class="badge bg-danger">离线</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>创建时间</th>
+                        <td>{{ node.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-sync-alt"></i> 手动同步
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="small">如果节点在线但配置未同步，可以手动触发：</p>
+                <button class="btn btn-outline-warning w-100 mb-2" onclick="syncConfig({{ node.id }})">
+                    <i class="fas fa-sync"></i> 同步配置到节点
+                </button>
+                <button class="btn btn-outline-danger w-100" onclick="restartNode({{ node.id }})">
+                    <i class="fas fa-redo"></i> 重启节点服务
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block extra_js %}
+<script>
+function syncConfig(nodeId) {
+    if (confirm('确定要同步配置到节点吗？')) {
+        fetch(`/api/v1/nodes/${nodeId}/sync`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('配置同步请求已发送');
+            } else {
+                alert('同步失败: ' + (data.error || '未知错误'));
+            }
+        })
+        .catch(error => {
+            alert('请求失败: ' + error);
+        });
+    }
+}
+
+function restartNode(nodeId) {
+    if (confirm('确定要重启节点服务吗？这会导致短暂中断')) {
+        fetch(`/nodes/${nodeId}/restart`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('节点重启请求已发送');
+            } else {
+                alert('重启失败: ' + (data.error || '未知错误'));
+            }
+        })
+        .catch(error => {
+            alert('请求失败: ' + error);
+        });
+    }
+}
+</script>
+{% endblock %}
+{% endblock %}

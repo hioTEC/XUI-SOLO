@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}系统设置 - Xray 集群管理系统{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <h4>
+            <i class="fas fa-cog"></i> 系统设置
+        </h4>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-user-shield"></i> 修改密码
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('settings') }}">
+                    <div class="mb-3">
+                        <label for="current_password" class="form-label">当前密码</label>
+                        <input type="password" class="form-control" id="current_password" name="current_password" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">新密码</label>
+                        <input type="password" class="form-control" id="new_password" name="new_password" required minlength="8">
+                        <div class="form-text">密码长度至少8位，建议包含字母、数字和特殊字符</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">确认新密码</label>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required minlength="8">
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> 更新密码
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle"></i> 系统信息
+                </h5>
+            </div>
+            <div class="card-body">
+                <table class="table">
+                    <tr>
+                        <th>系统版本</th>
+                        <td>Xray Cluster v1.0.0</td>
+                    </tr>
+                    <tr>
+                        <th>Master 域名</th>
+                        <td><code>{{ MASTER_DOMAIN }}</code></td>
+                    </tr>
+                    <tr>
+                        <th>集群密钥</th>
+                        <td>
+                            <span class="badge bg-warning">已配置</span>
+                            <small class="text-muted ms-2">(安全隐藏)</small>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>HTTPS 强制</th>
+                        <td><span class="badge bg-success">已启用</span></td>
+                    </tr>
+                    <tr>
+                        <th>API 安全路径</th>
+                        <td><span class="badge bg-success">已启用</span></td>
+                    </tr>
+                    <tr>
+                        <th>最后更新</th>
+                        <td>{{ now.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-shield-alt"></i> 安全状态
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>HTTPS 强制</span>
+                        <span class="badge bg-success">
+                            <i class="fas fa-check"></i> 已启用
+                        </span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>API 隐藏路径</span>
+                        <span class="badge bg-success">
+                            <i class="fas fa-check"></i> 已配置
+                        </span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>输入验证</span>
+                        <span class="badge bg-success">
+                            <i class="fas fa-check"></i> 已实施
+                        </span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>命令注入防护</span>
+                        <span class="badge bg-success">
+                            <i class="fas fa-check"></i> 已防护
+                        </span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>Docker 网络隔离</span>
+                        <span class="badge bg-success">
+                            <i class="fas fa-check"></i> 已隔离
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-exclamation-triangle"></i> 安全提醒
+                </h5>
+            </div>
+            <div class="card-body">
+                <ul class="small">
+                    <li>定期更新节点密码和密钥</li>
+                    <li>监控节点日志和异常活动</li>
+                    <li>确保所有节点启用 HTTPS</li>
+                    <li>使用强密码和定期更换</li>
+                    <li>限制 API 访问权限</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: xray-node-xray
+    restart: unless-stopped
+    ports:
+      - "443:443"  # 只暴露必要的 443 端口
+      - "443:443/udp"
+      - "${HYSTERIA_PORT}:${HYSTERIA_PORT}/udp"
+    volumes:
+      - ./xray_config/config.json:/etc/xray/config.json:ro
+      - ./ssl:/etc/xray:ro
+    networks:
+      - xray-node-net  # 只连接到内部网络
+    # 不暴露管理端口
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: xray-node-agent
+    restart: unless-stopped
+    # 重要：不暴露端口到宿主机，只通过 Xray Fallback 访问
+    expose:
+      - "8080"  # 只暴露给 Docker 网络
+    volumes:
+      - ./agent.py:/app/agent.py:ro
+      - ./xray_config:/app/config:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - NODE_UUID=${NODE_UUID}
+      - CLUSTER_SECRET=${CLUSTER_SECRET}
+      - MASTER_DOMAIN=${MASTER_DOMAIN}
+      - API_PATH=${API_PATH}
+    networks:
+      - xray-node-net  # 只连接到内部网络
+
+networks:
+  xray-node-net:
+    driver: bridge
+    internal: false  # 允许与 Caddy 通信

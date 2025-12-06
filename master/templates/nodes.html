@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}节点管理 - Xray 集群管理系统{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h4>
+        <i class="fas fa-network-wired"></i> 节点管理
+    </h4>
+    <a href="{{ url_for('add_node') }}" class="btn btn-primary">
+        <i class="fas fa-plus"></i> 添加节点
+    </a>
+</div>
+
+{% if nodes %}
+<div class="row">
+    {% for node in nodes %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">{{ node.name }}</h5>
+                <span>
+                    {% if node.is_online %}
+                    <span class="badge bg-success">
+                        <i class="fas fa-circle"></i> 在线
+                    </span>
+                    {% else %}
+                    <span class="badge bg-danger">
+                        <i class="fas fa-circle"></i> 离线
+                    </span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                <p class="card-text">
+                    <i class="fas fa-globe"></i>
+                    <code>{{ node.domain }}</code>
+                </p>
+                
+                <div class="mb-3">
+                    <small class="text-muted">协议支持:</small><br>
+                    {% if node.vless_enabled %}
+                    <span class="badge bg-primary protocol-badge">VLESS</span>
+                    {% endif %}
+                    {% if node.split_http_enabled %}
+                    <span class="badge bg-info protocol-badge">SplitHTTP</span>
+                    {% endif %}
+                    {% if node.hysteria2_enabled %}
+                    <span class="badge bg-warning protocol-badge">Hysteria2</span>
+                    {% endif %}
+                </div>
+                
+                <div class="mb-3">
+                    <small class="text-muted">最后在线:</small><br>
+                    {% if node.last_seen %}
+                    {{ node.last_seen.strftime('%Y-%m-%d %H:%M') }}
+                    {% else %}
+                    <span class="text-muted">从未在线</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-footer bg-transparent">
+                <div class="btn-group w-100">
+                    <a href="{{ url_for('node_detail', node_id=node.id) }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-eye"></i> 查看
+                    </a>
+                    <a href="{{ url_for('edit_node', node_id=node.id) }}" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-edit"></i> 编辑
+                    </a>
+                    <a href="{{ url_for('node_logs', node_id=node.id) }}" class="btn btn-sm btn-outline-info">
+                        <i class="fas fa-history"></i> 日志
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5">
+    <i class="fas fa-server fa-4x text-muted mb-4"></i>
+    <h4>暂无节点</h4>
+    <p class="text-muted mb-4">添加您的第一个节点开始使用 Xray 代理服务</p>
+    <a href="{{ url_for('add_node') }}" class="btn btn-primary btn-lg">
+        <i class="fas fa-plus"></i> 添加第一个节点
+    </a>
+</div>
+{% endif %}
+
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-info-circle"></i> 节点安装说明
+        </h5>
+    </div>
+    <div class="card-body">
+        <ol>
+            <li>在节点服务器上运行安装脚本：<code>curl -fsSL https://raw.githubusercontent.com/your-repo/install.sh | sudo bash</code></li>
+            <li>选择 "安装 Node 节点"</li>
+            <li>输入集群密钥（安装 Master 时生成）</li>
+            <li>输入节点域名（确保 DNS 已解析）</li>
+            <li>等待自动安装完成</li>
+            <li>节点会自动注册到 Master 面板</li>
+        </ol>
+    </div>
+</div>
+{% endblock %}

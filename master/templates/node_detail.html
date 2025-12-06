@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+
+{% block title %}{{ node.name }} - 节点详情{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-8">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}">首页</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('node_list') }}">节点管理</a></li>
+                <li class="breadcrumb-item active">{{ node.name }}</li>
+            </ol>
+        </nav>
+    </div>
+    <div class="col-md-4 text-end">
+        <a href="{{ url_for('edit_node', node_id=node.id) }}" class="btn btn-outline-primary">
+            <i class="fas fa-edit"></i> 编辑
+        </a>
+        <a href="{{ url_for('node_logs', node_id=node.id) }}" class="btn btn-outline-info">
+            <i class="fas fa-history"></i> 日志
+        </a>
+        <button class="btn btn-outline-warning" onclick="restartNode({{ node.id }})">
+            <i class="fas fa-redo"></i> 重启
+        </button>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle"></i> 节点信息
+                </h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr>
+                        <th>名称</th>
+                        <td>{{ node.name }}</td>
+                    </tr>
+                    <tr>
+                        <th>域名</th>
+                        <td><code>{{ node.domain }}</code></td>
+                    </tr>
+                    <tr>
+                        <th>UUID</th>
+                        <td><code class="small">{{ node.node_uuid }}</code></td>
+                    </tr>
+                    <tr>
+                        <th>API 路径</th>
+                        <td><code>/{{ node.api_path }}/</code></td>
+                    </tr>
+                    <tr>
+                        <th>状态</th>
+                        <td>
+                            {% if node.is_online %}
+                            <span class="badge bg-success">
+                                <i class="fas fa-circle"></i> 在线
+                            </span>
+                            {% else %}
+                            <span class="badge bg-danger">
+                                <i class="fas fa-circle"></i> 离线
+                            </span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>最后在线</th>
+                        <td>
+                            {% if node.last_seen %}
+                            {{ node.last_seen.strftime('%Y-%m-%d %H:%M:%S') }}
+                            {% else %}
+                            <span class="text-muted">从未在线</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>创建时间</th>
+                        <td>{{ node.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-plug"></i> 协议状态
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>
+                            <i class="fas fa-shield-alt text-primary"></i>
+                            VLESS + XTLS-Vision
+                        </span>
+                        {% if node.vless_enabled %}
+                        <span class="badge bg-success">已启用</span>
+                        {% else %}
+                        <span class="badge bg-secondary">已禁用</span>
+                        {% endif %}
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>
+                            <i class="fas fa-code text-info"></i>
+                            SplitHTTP
+                        </span>
+                        {% if node.split_http_enabled %}
+                        <span class="badge bg-success">已启用</span>
+                        {% else %}
+                        <span class="badge bg-secondary">已禁用</span>
+                        {% endif %}
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>
+                            <i class="fas fa-bolt text-warning"></i>
+                            Hysteria2
+                        </span>
+                        {% if node.hysteria2_enabled %}
+                        <span class="badge bg-success">已启用</span>
+                        {% else %}
+                        <span class="badge bg-secondary">已禁用</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-link"></i> 配置链接
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if node.vless_enabled and vless_link %}
+                <div class="mb-4">
+                    <h6>
+                        <span class="badge bg-primary">VLESS</span>
+                        XTLS-Vision 链接
+                    </h6>
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control config-link" value="{{ vless_link }}" readonly id="vless-link">
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('{{ vless_link }}', this)">
+                            <i class="fas fa-copy"></i> 复制
+                        </button>
+                    </div>
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle"></i>
+                        主力协议，抗封锁强，支持 Vision 混淆
+                    </small>
+                </div>
+                {% endif %}
+
+                {% if node.split_http_enabled and split_http_link %}
+                <div class="mb-4">
+                    <h6>
+                        <span class="badge bg-info">SplitHTTP</span>
+                        HTTP 伪装链接
+                    </h6>
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control config-link" value="{{ split_http_link }}" readonly id="split-http-link">
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('{{ split_http_link }}', this)">
+                            <i class="fas fa-copy"></i> 复制
+                        </button>
+                    </div>
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle"></i>
+                        通过 HTTP 伪装，CDN 友好，路径: /{{ node.split_http_path }}
+                    </small>
+                </div>
+                {% endif %}
+
+                {% if node.hysteria2_enabled and hysteria2_link %}
+                <div class="mb-4">
+                    <h6>
+                        <span class="badge bg-warning">Hysteria2</span>
+                        高速 UDP 链接
+                    </h6>
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control config-link" value="{{ hysteria2_link }}" readonly id="hysteria2-link">
+                        <button class="btn btn-outline-secondary" type="button" onclick="copyToClipboard('{{ hysteria2_link }}', this)">
+                            <i class="fas fa-copy"></i> 复制
+                        </button>
+                    </div>
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle"></i>
+                        高速 UDP 协议，端口: {{ node.hysteria2_port }}，支持混淆
+                    </small>
+                </div>
+                {% endif %}
+
+                {% if not vless_link and not split_http_link and not hysteria2_link %}
+                <div class="text-center py-4">
+                    <i class="fas fa-unlink fa-3x text-muted mb-3"></i>
+                    <h5>无可用链接</h5>
+                    <p class="text-muted">请启用至少一个协议并保存配置</p>
+                    <a href="{{ url_for('edit_node', node_id=node.id) }}" class="btn btn-primary">
+                        <i class="fas fa-cog"></i> 配置协议
+                    </a>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-chart-line"></i> 节点状态
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if node_status and node_status.success %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Xray 服务</h6>
+                                <p class="card-text">
+                                    {% if node_status.data.xray == 'running' %}
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check-circle"></i> 运行中
+                                    </span>
+                                    {% else %}
+                                    <span class="badge bg-danger">
+                                        <i class="fas fa-times-circle"></i> {{ node_status.data.xray }}
+                                    </span>
+                                    {% endif %}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Agent 服务</h6>
+                                <p class="card-text">
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check-circle"></i> 运行中
+                                    </span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        最后更新: {{
