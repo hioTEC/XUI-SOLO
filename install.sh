@@ -1,4 +1,3 @@
-#!/bin/bash
 
 set -e
 
@@ -39,19 +38,16 @@ check_and_install_tools() {
     local tools=("curl" "git" "openssl")
     local missing_tools=()
     
-    # 检查哪些工具缺失
     for tool in "${tools[@]}"; do
         if ! command -v "$tool" &> /dev/null; then
             missing_tools+=("$tool")
         fi
     done
     
-    # 如果有缺失的工具，尝试安装
     if [ ${#missing_tools[@]} -gt 0 ]; then
         print_warning "检测到缺失的工具: ${missing_tools[*]}"
         print_info "正在自动安装..."
         
-        # 检测操作系统
         if [ -f /etc/os-release ]; then
             . /etc/os-release
             OS=$ID
@@ -60,7 +56,6 @@ check_and_install_tools() {
             return 1
         fi
         
-        # 根据操作系统安装
         if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
             apt-get update
             for tool in "${missing_tools[@]}"; do
@@ -88,7 +83,6 @@ check_and_install_tools() {
 install_docker() {
     print_info "检测到 Docker 未安装，开始安装..."
     
-    # 检测操作系统
     if [ -f /etc/os-release ]; then
         . /etc/os-release
         OS=$ID
@@ -97,7 +91,6 @@ install_docker() {
         exit 1
     fi
     
-    # 安装 Docker
     if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
         apt-get update
         apt-get install -y ca-certificates curl gnupg
@@ -122,7 +115,6 @@ install_docker() {
         exit 1
     fi
     
-    # 启动 Docker
     systemctl start docker
     systemctl enable docker
     
@@ -131,34 +123,27 @@ install_docker() {
 
 # 检查 Docker 和 Docker Compose
 check_docker() {
-    # 先检查并安装必要工具
     check_and_install_tools
     
     if ! command -v docker &> /dev/null; then
         install_docker
     fi
     
-    # 检查 docker-compose 或 docker compose plugin
     if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null 2>&1; then
         print_warning "Docker Compose 未安装，正在安装..."
         
-        # 尝试安装 Docker Compose V2 (plugin)
         if docker --version | grep -q "Docker version"; then
             print_info "安装 Docker Compose V2 插件..."
             
-            # 创建插件目录
             mkdir -p /usr/local/lib/docker/cli-plugins
             
-            # 下载 Docker Compose V2
             COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep 'tag_name' | cut -d'"' -f4)
             curl -SL "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
                 -o /usr/local/lib/docker/cli-plugins/docker-compose
             chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
             
-            # 创建 docker-compose 命令别名
             if ! command -v docker-compose &> /dev/null; then
                 cat > /usr/local/bin/docker-compose << 'EOFDC'
-#!/bin/bash
 docker compose "$@"
 EOFDC
                 chmod +x /usr/local/bin/docker-compose
@@ -171,7 +156,6 @@ EOFDC
         fi
     fi
     
-    # 验证安装
     if command -v docker-compose &> /dev/null; then
         print_success "docker-compose 可用: $(docker-compose version --short 2>/dev/null || echo 'V2')"
     elif docker compose version &> /dev/null 2>&1; then
@@ -212,7 +196,6 @@ generate_uuid() {
 
 # 生成 x25519 密钥对
 generate_x25519_keypair() {
-    # Try using xray command first
     if command -v xray &> /dev/null; then
         local keys=$(xray x25519 2>/dev/null)
         if [ -n "$keys" ]; then
@@ -222,7 +205,6 @@ generate_x25519_keypair() {
         fi
     fi
     
-    # Try using openssl
     if command -v openssl &> /dev/null; then
         local private_key=$(openssl rand -base64 32)
         local public_key=$(openssl rand -base64 32)
@@ -231,7 +213,6 @@ generate_x25519_keypair() {
         return 0
     fi
     
-    # Fallback to Python with cryptography
     python3 -c "
 import base64
 import os
@@ -256,7 +237,6 @@ try:
     print(base64.urlsafe_b64encode(private_bytes).decode('utf-8'))
     print(base64.urlsafe_b64encode(public_bytes).decode('utf-8'))
 except ImportError:
-    # If cryptography not available, generate random strings
     print(base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8'))
     print(base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8'))
 " 2>/dev/null || echo ""
@@ -305,7 +285,6 @@ install_master() {
     
     check_dns "$master_domain"
     
-    # 生成集群密钥
     CLUSTER_SECRET=$(generate_random_string 32)
     
     print_info "生成集群密钥..."
@@ -316,15 +295,12 @@ install_master() {
     
     read -p "按 Enter 继续..."
     
-    # 创建目录结构
     print_info "创建目录结构..."
     mkdir -p /opt/xray-cluster/master
     mkdir -p /opt/xray-cluster/master/data
     mkdir -p /opt/xray-cluster/master/caddy_data
     
-    # 创建 .env 文件
     cat > /opt/xray-cluster/master/.env << EOF
-# Master 配置
 MASTER_DOMAIN=$master_domain
 CLUSTER_SECRET=$CLUSTER_SECRET
 ADMIN_USER=admin
@@ -342,7 +318,6 @@ REDIS_PASSWORD=$(generate_random_string 16)
 CADDY_EMAIL=admin@$master_domain
 EOF
     
-    # 创建 Docker Compose 文件
     cat > /opt/xray-cluster/master/docker-compose.yml << 'EOF'
 version: '3.8'
 
@@ -436,12 +411,10 @@ volumes:
   caddy_config:
 EOF
     
-    # 创建 Caddyfile
     cat > /opt/xray-cluster/master/Caddyfile << EOF
 ${MASTER_DOMAIN} {
     encode gzip
     
-    # 基本认证
     basicauth {
         ${ADMIN_USER} ${ADMIN_PASSWORD_HASH}
     }
@@ -461,12 +434,10 @@ ${MASTER_DOMAIN} {
 }
 EOF
     
-    # 创建 Web 应用目录
     mkdir -p /opt/xray-cluster/master/web
     mkdir -p /opt/xray-cluster/master/templates
     mkdir -p /opt/xray-cluster/master/static
     
-    # 创建 Web Dockerfile
     cat > /opt/xray-cluster/master/web/Dockerfile << 'EOF'
 FROM python:3.11-slim
 
@@ -517,7 +488,6 @@ install_node() {
     
     check_dns "$node_domain"
     
-    # 生成节点 UUID 和密钥
     NODE_UUID=$(generate_uuid)
     X25519_KEYS=$(generate_x25519_keypair)
     
@@ -530,18 +500,14 @@ install_node() {
         X25519_PUBLIC_KEY=$(echo "$X25519_KEYS" | tail -n1)
     fi
     
-    # 生成安全的 API 路径
     API_PATH=$(echo -n "${cluster_secret}:$(date +%s):${node_uuid}" | sha256sum | cut -c1-16)
     
-    # 创建目录结构
     print_info "创建目录结构..."
     mkdir -p /opt/xray-cluster/node
     mkdir -p /opt/xray-cluster/node/xray_config
     mkdir -p /opt/xray-cluster/node/caddy_data
     
-    # 创建 .env 文件
     cat > /opt/xray-cluster/node/.env << EOF
-# Node 配置
 NODE_DOMAIN=$node_domain
 MASTER_DOMAIN=$master_domain
 CLUSTER_SECRET=$cluster_secret
@@ -558,7 +524,6 @@ HYSTERIA_PASSWORD=$(generate_random_string 16)
 CADDY_EMAIL=admin@$node_domain
 EOF
     
-    # 创建 Xray 配置文件
     cat > /opt/xray-cluster/node/xray_config/config.json << 'EOF'
 {
   "log": {
@@ -712,7 +677,6 @@ EOF
 }
 EOF
     
-    # 创建 Docker Compose 文件
     cat > /opt/xray-cluster/node/docker-compose.yml << 'EOF'
 version: '3.8'
 
@@ -793,28 +757,22 @@ volumes:
   caddy_config:
 EOF
     
-    # 创建 Caddyfile
     cat > /opt/xray-cluster/node/Caddyfile << EOF
 :80 {
     encode gzip
     
-    # API 路径转发到 Agent
     handle_path /${API_PATH}/* {
         reverse_proxy agent:8080
     }
     
-    # 其他请求返回 404
     respond "404 Not Found" 404
 }
 EOF
     
-    # 创建 SSL 证书目录（Caddy 会自动管理）
     mkdir -p /opt/xray-cluster/node/ssl
     
-    # 创建 Agent 目录
     mkdir -p /opt/xray-cluster/node/agent
     
-    # 创建 Agent Dockerfile
     cat > /opt/xray-cluster/node/agent/Dockerfile << 'EOF'
 FROM python:3.11-slim
 
@@ -850,7 +808,6 @@ install_solo() {
     print_info "SOLO 模式使用 Xray 作为网关，统一管理 443 端口"
     echo ""
     
-    # 检查是否已有安装
     local KEEP_CONFIG=false
     if [ -f "/opt/xray-cluster/INSTALL_INFO.txt" ]; then
         print_warning "检测到已有安装"
@@ -864,7 +821,6 @@ install_solo() {
         fi
     fi
     
-    # 如果保留配置，尝试读取现有域名
     if [ "$KEEP_CONFIG" = true ] && [ -f "/opt/xray-cluster/master/.env" ]; then
         if [ -z "$panel_domain" ]; then
             panel_domain=$(grep "^PANEL_DOMAIN=" /opt/xray-cluster/master/.env | cut -d'=' -f2)
@@ -877,9 +833,7 @@ install_solo() {
         fi
     fi
     
-    # 如果没有提供域名参数，则提示输入
     if [ -z "$panel_domain" ]; then
-        # 检查是否通过管道运行
         if [ -t 0 ]; then
             read -p "请输入管理面板域名 (如 panel.example.com): " panel_domain
             read -p "请输入节点域名 (如 node.example.com): " node_domain
@@ -902,7 +856,6 @@ install_solo() {
     print_info "管理面板域名: $panel_domain"
     print_info "节点域名: $node_domain"
     
-    # DNS 检查（失败不退出）
     check_dns "$panel_domain" || {
         print_warning "面板域名 DNS 检查失败，但继续安装..."
     }
@@ -913,7 +866,6 @@ install_solo() {
     print_warning "请确保两个域名都已正确解析到本服务器 IP"
     sleep 2
     
-    # 生成或读取密钥
     if [ "$KEEP_CONFIG" = true ] && [ -f "/opt/xray-cluster/master/.env" ]; then
         print_info "读取现有密钥..."
         CLUSTER_SECRET=$(grep "^CLUSTER_SECRET=" /opt/xray-cluster/master/.env | cut -d'=' -f2)
@@ -931,7 +883,6 @@ install_solo() {
         print_success "已读取现有配置"
     fi
     
-    # 如果没有读取到，则生成新的
     if [ -z "$CLUSTER_SECRET" ]; then
         CLUSTER_SECRET=$(generate_random_string 32)
     fi
@@ -951,7 +902,6 @@ install_solo() {
     print_info "生成安全密钥..."
     echo ""
     
-    # 生成节点 UUID 和密钥
     if [ -z "$NODE_UUID" ]; then
         NODE_UUID=$(generate_uuid)
     fi
@@ -968,11 +918,9 @@ install_solo() {
         X25519_PUBLIC_KEY=$(echo "$X25519_KEYS" | tail -n1)
     fi
     
-    # 生成安全的 API 路径
     API_PATH=$(echo -n "${CLUSTER_SECRET}:$(date +%s):${NODE_UUID}" | sha256sum | cut -c1-16)
     HYSTERIA_PASSWORD=$(generate_random_string 16)
     
-    # 创建目录结构
     print_info "创建目录结构..."
     mkdir -p /opt/xray-cluster/master
     mkdir -p /opt/xray-cluster/master/data
@@ -989,7 +937,6 @@ install_solo() {
     mkdir -p /opt/xray-cluster/node/certs
     mkdir -p /opt/xray-cluster/node/logs
     
-    # 复制应用文件（如果存在）
     print_info "准备应用文件..."
     if [ -d "master" ] && [ -f "master/app.py" ]; then
         print_info "检测到源代码，复制文件..."
@@ -1014,7 +961,6 @@ install_solo() {
         cd - > /dev/null
     fi
     
-    # 确保 requirements.txt 存在
     if [ ! -f "/opt/xray-cluster/master/requirements.txt" ]; then
         print_info "创建 requirements.txt..."
         cat > /opt/xray-cluster/master/requirements.txt << 'EOFREQ'
@@ -1035,11 +981,9 @@ EOFREQ
         cp /opt/xray-cluster/master/requirements.txt /opt/xray-cluster/node/requirements.txt
     fi
     
-    # 确保 app.py 存在（创建最小版本）
     if [ ! -f "/opt/xray-cluster/master/app.py" ]; then
         print_warning "app.py 不存在，创建最小版本..."
         cat > /opt/xray-cluster/master/app.py << 'EOFAPP'
-#!/usr/bin/env python3
 from flask import Flask, render_template, jsonify
 import os
 
@@ -1063,11 +1007,9 @@ if __name__ == '__main__':
 EOFAPP
     fi
     
-    # 确保 agent.py 存在（创建最小版本）
     if [ ! -f "/opt/xray-cluster/node/agent.py" ]; then
         print_warning "agent.py 不存在，创建最小版本..."
         cat > /opt/xray-cluster/node/agent.py << 'EOFAGENT'
-#!/usr/bin/env python3
 from flask import Flask, jsonify
 import os
 
@@ -1085,9 +1027,7 @@ if __name__ == '__main__':
 EOFAGENT
     fi
     
-    # 创建 Master .env 文件
     cat > /opt/xray-cluster/master/.env << EOF
-# Master 配置
 MASTER_DOMAIN=$panel_domain
 PANEL_DOMAIN=$panel_domain
 NODE_DOMAIN=$node_domain
@@ -1107,7 +1047,6 @@ REDIS_PASSWORD=$REDIS_PASSWORD
 CADDY_EMAIL=admin@$panel_domain
 EOF
     
-    # 创建 Master Docker Compose 文件 (SOLO模式 - Caddy仅内部8080端口)
     print_info "创建 Master 配置文件..."
     cat > /opt/xray-cluster/master/docker-compose.yml << 'EOFCOMPOSE'
 version: '3.8'
@@ -1195,11 +1134,8 @@ EOFCOMPOSE
 
     # 创建 Master Caddyfile (SOLO模式 - 内部路由器，监听8080)
     cat > /opt/xray-cluster/master/Caddyfile << EOFCADDY
-# 监听内部端口 8080，由 Xray fallback 转发过来
 :8080 {
-    # 根据 Host 头路由
     
-    # 管理面板域名 -> Web 应用
     @panel host ${panel_domain}
     handle @panel {
         encode gzip
@@ -1211,21 +1147,17 @@ EOFCOMPOSE
         }
     }
     
-    # 节点域名 -> 伪装网站 + Agent API
     @node host ${node_domain}
     handle @node {
-        # Agent API 路径
         handle_path /${API_PATH}/* {
             reverse_proxy 127.0.0.1:8081
         }
         
-        # 伪装网站
         handle {
             respond "Welcome to our site" 200
         }
     }
     
-    # 默认：所有其他请求也转发到 Web 应用（兼容性更好）
     handle {
         encode gzip
         reverse_proxy web:5000 {
@@ -1262,9 +1194,7 @@ EXPOSE 5000
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "app:app"]
 EOFDOCKER
     
-    # 创建 Node .env 文件
     cat > /opt/xray-cluster/node/.env << EOF
-# Node 配置
 NODE_DOMAIN=$node_domain
 PANEL_DOMAIN=$panel_domain
 MASTER_DOMAIN=$panel_domain
@@ -1282,7 +1212,6 @@ HYSTERIA_PASSWORD=$HYSTERIA_PASSWORD
 CADDY_EMAIL=admin@$node_domain
 EOF
     
-    # 创建 Node Docker Compose 文件 (SOLO模式 - Xray网关模式)
     print_info "创建 Worker 配置文件..."
     cat > /opt/xray-cluster/node/docker-compose.yml << 'EOFCOMPOSE'
 version: '3.8'
@@ -1437,8 +1366,6 @@ EOFXRAY
 
     # 创建ACME证书获取脚本
     cat > /opt/xray-cluster/node/get-certs.sh << EOFACME
-#!/bin/bash
-# 使用 acme.sh 获取证书
 
 set -e
 
@@ -1533,7 +1460,6 @@ if [ ! -d ~/.acme.sh ]; then
     print_info "安装 acme.sh..."
     curl -s https://get.acme.sh | sh -s email=admin@\$PANEL_DOMAIN
     
-    # 重新加载环境变量
     if [ -f ~/.bashrc ]; then
         source ~/.bashrc
     fi
@@ -1623,17 +1549,14 @@ EOFACME
 
     chmod +x /opt/xray-cluster/node/get-certs.sh
     
-    # 生成自签名证书（临时使用，后续可用 acme.sh 替换）
     print_info "生成自签名 SSL 证书..."
     
-    # 为面板域名生成证书
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /opt/xray-cluster/node/certs/${panel_domain}.key \
         -out /opt/xray-cluster/node/certs/${panel_domain}.crt \
         -subj "/C=US/ST=State/L=City/O=Organization/CN=${panel_domain}" \
         2>/dev/null
     
-    # 为节点域名生成证书
     openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /opt/xray-cluster/node/certs/${node_domain}.key \
         -out /opt/xray-cluster/node/certs/${node_domain}.crt \
@@ -1660,37 +1583,29 @@ EXPOSE 8080
 CMD ["python", "agent.py"]
 EOFDOCKER
     
-    # 停止现有服务（如果保留配置）
     if [ "$KEEP_CONFIG" = true ]; then
         print_info "停止现有服务..."
         cd /opt/xray-cluster/master && docker-compose down 2>/dev/null || true
         cd /opt/xray-cluster/node && docker-compose down 2>/dev/null || true
     fi
     
-    # 启动 Master 服务
     print_info "启动 Master 控制面板..."
     cd /opt/xray-cluster/master
     docker-compose up -d --build
     
-    # 等待 Master 启动
     print_info "等待 Master 服务启动..."
     sleep 10
     
-    # 启动 Node 服务
     print_info "启动本地 Worker 节点..."
     cd /opt/xray-cluster/node
     
-    # 清理孤立容器
     docker-compose down --remove-orphans 2>/dev/null || true
     
-    # 启动服务（重建以应用新配置）
     docker-compose up -d --build
     
-    # 等待服务完全启动
     print_info "等待服务完全启动..."
     sleep 5
     
-    # 显示安装信息
     echo ""
     echo "========================================"
     print_success "SOLO 模式安装完成！"
@@ -1729,7 +1644,6 @@ EOFDOCKER
     print_info "添加更多 Worker 节点时使用集群密钥"
     echo ""
     
-    # 保存信息到文件
     cat > /opt/xray-cluster/INSTALL_INFO.txt << EOF
 SOLO 模式安装信息
 安装时间: $(date)
@@ -1855,7 +1769,6 @@ main() {
         exit 1
     fi
     
-    # 解析命令行参数
     MODE=""
     PANEL_DOMAIN=""
     NODE_DOMAIN=""
@@ -1887,7 +1800,6 @@ main() {
                 shift 2
                 ;;
             --domain)
-                # 兼容旧参数，同时设置两个域名
                 PANEL_DOMAIN="$2"
                 NODE_DOMAIN="$2"
                 shift 2
@@ -1898,7 +1810,6 @@ main() {
         esac
     done
     
-    # 执行对应的安装模式
     if [ "$MODE" = "solo" ]; then
         check_docker
         install_solo "$PANEL_DOMAIN" "$NODE_DOMAIN"
