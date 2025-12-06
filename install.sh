@@ -1081,13 +1081,19 @@ EOFCOMPOSE
         
         # 伪装网站
         handle {
-            respond "Welcome" 200
+            respond "Welcome to our site" 200
         }
     }
     
-    # 其他域名 -> 404
+    # 默认：所有其他请求也转发到 Web 应用（兼容性更好）
     handle {
-        respond "404 Not Found" 404
+        encode gzip
+        reverse_proxy web:5000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up Host {host}
+        }
     }
     
     log {
