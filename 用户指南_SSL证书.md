@@ -42,17 +42,18 @@
 # 1. 连接到服务器
 ssh root@你的服务器IP
 
-# 2. 停止 Xray（释放 80 端口）
+# 2. 运行证书获取脚本（会自动处理所有步骤）
 cd /opt/xray-cluster/node
-docker-compose stop xray
-
-# 3. 获取免费的 Let's Encrypt 证书
 bash get-certs.sh
 
-# 4. 重启 Xray
-docker-compose start xray
+# 脚本会自动：
+# - 检查并安装依赖（curl, socat, cron）
+# - 停止 Xray 释放 80 端口
+# - 获取 Let's Encrypt 证书
+# - 安装证书
+# - 重启 Xray 服务
 
-# 5. 刷新浏览器，警告消失！
+# 3. 刷新浏览器，警告消失！
 ```
 
 **说明**：

@@ -30,18 +30,19 @@
 **推荐用于生产环境**
 
 ```bash
-# 1. 停止 Xray（释放 80 端口）
+# 方式 A：使用安装时生成的脚本
 cd /opt/xray-cluster/node
-docker-compose stop xray
-
-# 2. 获取 Let's Encrypt 证书
 bash get-certs.sh
 
-# 3. 重启 Xray
-docker-compose start xray
-
-# 4. 刷新浏览器，警告消失
+# 方式 B：使用项目根目录的脚本
+bash get-certs.sh 面板域名 节点域名
 ```
+
+**说明**：
+- ✅ 脚本会自动检查并安装所需依赖（curl, socat, cron 等）
+- ✅ 自动停止 Xray 释放 80 端口
+- ✅ 自动获取证书并安装
+- ✅ 自动重启 Xray 服务
 
 **前提条件**：
 - 域名已正确解析到服务器 IP

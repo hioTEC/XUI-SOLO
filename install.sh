@@ -34,6 +34,56 @@ check_command() {
     fi
 }
 
+# 检查并安装必要工具
+check_and_install_tools() {
+    local tools=("curl" "git" "openssl")
+    local missing_tools=()
+    
+    # 检查哪些工具缺失
+    for tool in "${tools[@]}"; do
+        if ! command -v "$tool" &> /dev/null; then
+            missing_tools+=("$tool")
+        fi
+    done
+    
+    # 如果有缺失的工具，尝试安装
+    if [ ${#missing_tools[@]} -gt 0 ]; then
+        print_warning "检测到缺失的工具: ${missing_tools[*]}"
+        print_info "正在自动安装..."
+        
+        # 检测操作系统
+        if [ -f /etc/os-release ]; then
+            . /etc/os-release
+            OS=$ID
+        else
+            print_error "无法检测操作系统"
+            return 1
+        fi
+        
+        # 根据操作系统安装
+        if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
+            apt-get update
+            for tool in "${missing_tools[@]}"; do
+                print_info "安装 $tool..."
+                apt-get install -y "$tool"
+            done
+        elif [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
+            for tool in "${missing_tools[@]}"; do
+                print_info "安装 $tool..."
+                yum install -y "$tool"
+            done
+        else
+            print_error "不支持的操作系统: $OS"
+            print_info "请手动安装: ${missing_tools[*]}"
+            return 1
+        fi
+        
+        print_success "工具安装完成"
+    fi
+    
+    return 0
+}
+
 # 安装 Docker
 install_docker() {
     print_info "检测到 Docker 未安装，开始安装..."
@@ -81,6 +131,9 @@ install_docker() {
 
 # 检查 Docker 和 Docker Compose
 check_docker() {
+    # 先检查并安装必要工具
+    check_and_install_tools
+    
     if ! command -v docker &> /dev/null; then
         install_docker
     fi
@@ -1383,36 +1436,189 @@ EOFCADDY
 EOFXRAY
 
     # 创建ACME证书获取脚本
-    cat > /opt/xray-cluster/node/get-certs.sh << 'EOFACME'
+    cat > /opt/xray-cluster/node/get-certs.sh << EOFACME
 #!/bin/bash
 # 使用 acme.sh 获取证书
 
-PANEL_DOMAIN="${panel_domain}"
-NODE_DOMAIN="${node_domain}"
+set -e
+
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+print_info() {
+    echo -e "\${BLUE}[INFO]\${NC} \$1"
+}
+
+print_success() {
+    echo -e "\${GREEN}[SUCCESS]\${NC} \$1"
+}
+
+print_error() {
+    echo -e "\${RED}[ERROR]\${NC} \$1"
+}
+
+print_warning() {
+    echo -e "\${YELLOW}[WARNING]\${NC} \$1"
+}
+
+# 从 .env 文件读取域名
+if [ -f /opt/xray-cluster/node/.env ]; then
+    source /opt/xray-cluster/node/.env
+    PANEL_DOMAIN=\${PANEL_DOMAIN:-${panel_domain}}
+    NODE_DOMAIN=\${NODE_DOMAIN:-${node_domain}}
+else
+    PANEL_DOMAIN="${panel_domain}"
+    NODE_DOMAIN="${node_domain}"
+fi
+
 CERT_DIR="/opt/xray-cluster/node/certs"
+
+print_info "准备获取 SSL 证书..."
+print_info "面板域名: \$PANEL_DOMAIN"
+print_info "节点域名: \$NODE_DOMAIN"
+
+# 检查依赖
+print_info "检查依赖..."
+
+# 检查 curl
+if ! command -v curl &> /dev/null; then
+    print_warning "curl 未安装，正在安装..."
+    if command -v apt-get &> /dev/null; then
+        apt-get update && apt-get install -y curl
+    elif command -v yum &> /dev/null; then
+        yum install -y curl
+    else
+        print_error "无法自动安装 curl，请手动安装"
+        exit 1
+    fi
+fi
+
+# 检查 socat（acme.sh standalone 模式需要）
+if ! command -v socat &> /dev/null; then
+    print_warning "socat 未安装，正在安装..."
+    if command -v apt-get &> /dev/null; then
+        apt-get update && apt-get install -y socat
+    elif command -v yum &> /dev/null; then
+        yum install -y socat
+    else
+        print_error "无法自动安装 socat，请手动安装"
+        exit 1
+    fi
+fi
+
+# 检查 cron（用于自动续期）
+if ! command -v crontab &> /dev/null; then
+    print_warning "cron 未安装，正在安装..."
+    if command -v apt-get &> /dev/null; then
+        apt-get update && apt-get install -y cron
+        systemctl enable cron
+        systemctl start cron
+    elif command -v yum &> /dev/null; then
+        yum install -y cronie
+        systemctl enable crond
+        systemctl start crond
+    else
+        print_warning "无法自动安装 cron，证书将无法自动续期"
+    fi
+fi
+
+print_success "依赖检查完成"
 
 # 安装 acme.sh
 if [ ! -d ~/.acme.sh ]; then
-    curl https://get.acme.sh | sh -s email=admin@\${PANEL_DOMAIN}
+    print_info "安装 acme.sh..."
+    curl -s https://get.acme.sh | sh -s email=admin@\$PANEL_DOMAIN
+    
+    # 重新加载环境变量
+    if [ -f ~/.bashrc ]; then
+        source ~/.bashrc
+    fi
+    
+    print_success "acme.sh 安装完成"
+else
+    print_info "acme.sh 已安装"
+fi
+
+# 设置 acme.sh 路径
+ACME_SH="\$HOME/.acme.sh/acme.sh"
+
+if [ ! -f "\$ACME_SH" ]; then
+    print_error "acme.sh 未找到，请检查安装"
+    exit 1
+fi
+
+# 检查端口 80 是否被占用
+if netstat -tlnp 2>/dev/null | grep -q ':80 ' || ss -tlnp 2>/dev/null | grep -q ':80 '; then
+    print_error "端口 80 已被占用，请先停止占用端口的服务"
+    print_info "提示：运行 'cd /opt/xray-cluster/node && docker-compose stop xray' 停止 Xray"
+    exit 1
 fi
 
 # 获取面板域名证书
-~/.acme.sh/acme.sh --issue -d \${PANEL_DOMAIN} --standalone --httpport 80
+print_info "获取面板域名证书: \$PANEL_DOMAIN"
+if "\$ACME_SH" --issue -d "\$PANEL_DOMAIN" --standalone --httpport 80 --force; then
+    print_success "面板域名证书获取成功"
+else
+    print_error "面板域名证书获取失败"
+    print_info "请检查："
+    print_info "  1. 域名 \$PANEL_DOMAIN 是否已解析到本服务器"
+    print_info "  2. 端口 80 是否可从公网访问"
+    print_info "  3. 防火墙是否已开放端口 80"
+    exit 1
+fi
 
 # 获取节点域名证书
-~/.acme.sh/acme.sh --issue -d \${NODE_DOMAIN} --standalone --httpport 80
+print_info "获取节点域名证书: \$NODE_DOMAIN"
+if "\$ACME_SH" --issue -d "\$NODE_DOMAIN" --standalone --httpport 80 --force; then
+    print_success "节点域名证书获取成功"
+else
+    print_error "节点域名证书获取失败"
+    print_info "请检查："
+    print_info "  1. 域名 \$NODE_DOMAIN 是否已解析到本服务器"
+    print_info "  2. 端口 80 是否可从公网访问"
+    print_info "  3. 防火墙是否已开放端口 80"
+    exit 1
+fi
 
-# 安装证书
-~/.acme.sh/acme.sh --install-cert -d \${PANEL_DOMAIN} \\
-    --key-file \${CERT_DIR}/\${PANEL_DOMAIN}.key \\
-    --fullchain-file \${CERT_DIR}/\${PANEL_DOMAIN}.crt
+# 创建证书目录
+mkdir -p "\$CERT_DIR"
 
-~/.acme.sh/acme.sh --install-cert -d \${NODE_DOMAIN} \\
-    --key-file \${CERT_DIR}/\${NODE_DOMAIN}.key \\
-    --fullchain-file \${CERT_DIR}/\${NODE_DOMAIN}.crt
+# 安装面板域名证书
+print_info "安装面板域名证书..."
+"\$ACME_SH" --install-cert -d "\$PANEL_DOMAIN" \\
+    --key-file "\$CERT_DIR/\$PANEL_DOMAIN.key" \\
+    --fullchain-file "\$CERT_DIR/\$PANEL_DOMAIN.crt" \\
+    --reloadcmd "cd /opt/xray-cluster/node && docker-compose restart xray"
+
+# 安装节点域名证书
+print_info "安装节点域名证书..."
+"\$ACME_SH" --install-cert -d "\$NODE_DOMAIN" \\
+    --key-file "\$CERT_DIR/\$NODE_DOMAIN.key" \\
+    --fullchain-file "\$CERT_DIR/\$NODE_DOMAIN.crt" \\
+    --reloadcmd "cd /opt/xray-cluster/node && docker-compose restart xray"
+
+# 设置权限
+chmod 600 "\$CERT_DIR"/*.key
+chmod 644 "\$CERT_DIR"/*.crt
+
+print_success "证书安装完成！"
+print_info "证书位置: \$CERT_DIR"
+print_info "证书将在 60 天后自动续期"
+
+# 验证证书
+print_info "验证证书..."
+ls -lh "\$CERT_DIR"
 
 # 重启 Xray
+print_info "重启 Xray 服务..."
 cd /opt/xray-cluster/node && docker-compose restart xray
+
+print_success "所有操作完成！"
+print_info "现在可以访问 https://\$PANEL_DOMAIN"
 EOFACME
 
     chmod +x /opt/xray-cluster/node/get-certs.sh
