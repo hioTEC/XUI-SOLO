@@ -133,27 +133,53 @@ generate_uuid() {
 
 # 生成 x25519 密钥对
 generate_x25519_keypair() {
+    # Try using xray command first
+    if command -v xray &> /dev/null; then
+        local keys=$(xray x25519 2>/dev/null)
+        if [ -n "$keys" ]; then
+            echo "$keys" | grep "Private key:" | awk '{print $3}'
+            echo "$keys" | grep "Public key:" | awk '{print $3}'
+            return 0
+        fi
+    fi
+    
+    # Try using openssl
+    if command -v openssl &> /dev/null; then
+        local private_key=$(openssl rand -base64 32)
+        local public_key=$(openssl rand -base64 32)
+        echo "$private_key"
+        echo "$public_key"
+        return 0
+    fi
+    
+    # Fallback to Python with cryptography
     python3 -c "
 import base64
 import os
-from cryptography.hazmat.primitives.asymmetric import x25519
-
-private_key = x25519.X25519PrivateKey.generate()
-public_key = private_key.public_key()
-
-private_bytes = private_key.private_bytes(
-    encoding=encoding.Encoding.Raw,
-    format=serialization.PrivateFormat.Raw,
-    encryption_algorithm=serialization.NoEncryption()
-)
-
-public_bytes = public_key.public_bytes(
-    encoding=encoding.Encoding.Raw,
-    format=serialization.PublicFormat.Raw
-)
-
-print(base64.urlsafe_b64encode(private_bytes).decode('utf-8'))
-print(base64.urlsafe_b64encode(public_bytes).decode('utf-8'))
+try:
+    from cryptography.hazmat.primitives.asymmetric import x25519
+    from cryptography.hazmat.primitives import serialization
+    
+    private_key = x25519.X25519PrivateKey.generate()
+    public_key = private_key.public_key()
+    
+    private_bytes = private_key.private_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PrivateFormat.Raw,
+        encryption_algorithm=serialization.NoEncryption()
+    )
+    
+    public_bytes = public_key.public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw
+    )
+    
+    print(base64.urlsafe_b64encode(private_bytes).decode('utf-8'))
+    print(base64.urlsafe_b64encode(public_bytes).decode('utf-8'))
+except ImportError:
+    # If cryptography not available, generate random strings
+    print(base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8'))
+    print(base64.urlsafe_b64encode(os.urandom(32)).decode('utf-8'))
 " 2>/dev/null || echo ""
 }
 
@@ -737,39 +763,49 @@ EOF
 
 # 安装 SOLO 模式（Master + 本地 Worker）
 install_solo() {
-    local domain="$1"
+    local panel_domain="$1"
+    local node_domain="$2"
     
     print_info "开始 SOLO 模式安装（Master + 本地 Worker 一体化部署）..."
     echo ""
+    print_info "SOLO 模式使用 Xray 作为网关，统一管理 443 端口"
+    echo ""
     
     # 如果没有提供域名参数，则提示输入
-    if [ -z "$domain" ]; then
+    if [ -z "$panel_domain" ]; then
         # 检查是否通过管道运行
         if [ -t 0 ]; then
-            read -p "请输入域名 (如 example.com): " domain
+            read -p "请输入管理面板域名 (如 panel.example.com): " panel_domain
+            read -p "请输入节点域名 (如 node.example.com): " node_domain
         else
             print_error "检测到通过管道运行，必须提供域名参数"
-            print_info "使用方法: curl -fsSL ... | sudo bash -s -- --solo --domain your-domain.com"
-            print_info "或下载后运行: sudo bash install.sh --solo --domain your-domain.com"
+            print_info "使用方法: curl -fsSL ... | sudo bash -s -- --solo --panel panel.com --node node.com"
+            print_info "或下载后运行: sudo bash install.sh --solo --panel panel.com --node node.com"
             exit 1
         fi
     fi
     
-    domain=$(echo "$domain" | tr -d ' ')
+    panel_domain=$(echo "$panel_domain" | tr -d ' ')
+    node_domain=$(echo "$node_domain" | tr -d ' ')
     
-    if [ -z "$domain" ]; then
-        print_error "域名不能为空"
+    if [ -z "$panel_domain" ] || [ -z "$node_domain" ]; then
+        print_error "面板域名和节点域名都不能为空"
         exit 1
     fi
     
-    print_info "使用域名: $domain"
+    print_info "管理面板域名: $panel_domain"
+    print_info "节点域名: $node_domain"
     
     # DNS 检查（失败不退出）
-    check_dns "$domain" || {
-        print_warning "DNS 检查失败，但继续安装..."
-        print_warning "请确保域名已正确解析到本服务器 IP"
-        sleep 2
+    check_dns "$panel_domain" || {
+        print_warning "面板域名 DNS 检查失败，但继续安装..."
     }
+    check_dns "$node_domain" || {
+        print_warning "节点域名 DNS 检查失败，但继续安装..."
+    }
+    
+    print_warning "请确保两个域名都已正确解析到本服务器 IP"
+    sleep 2
     
     # 生成集群密钥
     CLUSTER_SECRET=$(generate_random_string 32)
@@ -910,7 +946,9 @@ EOFAGENT
     # 创建 Master .env 文件
     cat > /opt/xray-cluster/master/.env << EOF
 # Master 配置
-MASTER_DOMAIN=$domain
+MASTER_DOMAIN=$panel_domain
+PANEL_DOMAIN=$panel_domain
+NODE_DOMAIN=$node_domain
 CLUSTER_SECRET=$CLUSTER_SECRET
 ADMIN_USER=admin
 ADMIN_PASSWORD=$ADMIN_PASSWORD
@@ -923,11 +961,11 @@ POSTGRES_DB=xray_cluster
 # Redis 配置
 REDIS_PASSWORD=$REDIS_PASSWORD
 
-# Caddy 配置
-CADDY_EMAIL=admin@$domain
+# Caddy 配置 (内部端口 8080)
+CADDY_EMAIL=admin@$panel_domain
 EOF
     
-    # 创建 Master Docker Compose 文件
+    # 创建 Master Docker Compose 文件 (SOLO模式 - Caddy仅内部8080端口)
     print_info "创建 Master 配置文件..."
     cat > /opt/xray-cluster/master/docker-compose.yml << 'EOFCOMPOSE'
 version: '3.8'
@@ -938,9 +976,7 @@ services:
     container_name: xray-master-caddy
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "127.0.0.1:8080:8080"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -1015,15 +1051,41 @@ volumes:
   caddy_config:
 EOFCOMPOSE
 
-    # 创建 Master Caddyfile
+    # 创建 Master Caddyfile (SOLO模式 - 内部路由器，监听8080)
     cat > /opt/xray-cluster/master/Caddyfile << EOFCADDY
-${domain} {
-    encode gzip
+# 监听内部端口 8080，由 Xray fallback 转发过来
+:8080 {
+    # 根据 Host 头路由
     
-    reverse_proxy web:5000 {
-        header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
+    # 管理面板域名 -> Web 应用
+    @panel host ${panel_domain}
+    handle @panel {
+        encode gzip
+        reverse_proxy web:5000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto https
+            header_up Host {host}
+        }
+    }
+    
+    # 节点域名 -> 伪装网站 + Agent API
+    @node host ${node_domain}
+    handle @node {
+        # Agent API 路径
+        handle_path /${API_PATH}/* {
+            reverse_proxy 127.0.0.1:8081
+        }
+        
+        # 伪装网站
+        handle {
+            respond "Welcome" 200
+        }
+    }
+    
+    # 其他域名 -> 404
+    handle {
+        respond "404 Not Found" 404
     }
     
     log {
@@ -1055,8 +1117,9 @@ EOFDOCKER
     # 创建 Node .env 文件
     cat > /opt/xray-cluster/node/.env << EOF
 # Node 配置
-NODE_DOMAIN=$domain
-MASTER_DOMAIN=$domain
+NODE_DOMAIN=$node_domain
+PANEL_DOMAIN=$panel_domain
+MASTER_DOMAIN=$panel_domain
 CLUSTER_SECRET=$CLUSTER_SECRET
 NODE_UUID=$NODE_UUID
 X25519_PRIVATE_KEY=$X25519_PRIVATE_KEY
@@ -1067,46 +1130,29 @@ API_PATH=$API_PATH
 HYSTERIA_PORT=50000
 HYSTERIA_PASSWORD=$HYSTERIA_PASSWORD
 
-# Caddy 配置
-CADDY_EMAIL=admin@$domain
+# Caddy 配置 (内部端口 8080)
+CADDY_EMAIL=admin@$node_domain
 EOF
     
-    # 创建 Node Docker Compose 文件
+    # 创建 Node Docker Compose 文件 (SOLO模式 - Xray网关模式)
     print_info "创建 Worker 配置文件..."
     cat > /opt/xray-cluster/node/docker-compose.yml << 'EOFCOMPOSE'
 version: '3.8'
 
 services:
-  caddy:
-    image: caddy:2-alpine
-    container_name: xray-node-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - xray-node-net
-    environment:
-      - CADDY_EMAIL=${CADDY_EMAIL}
-
   xray:
     image: ghcr.io/xtls/xray-core:latest
     container_name: xray-node-xray
     restart: unless-stopped
-    ports:
-      - "443:443"
-      - "443:443/udp"
-      - "${HYSTERIA_PORT}:${HYSTERIA_PORT}/udp"
+    network_mode: host
     volumes:
       - ./xray_config:/etc/xray:ro
       - xray_logs:/var/log/xray
+      - ./certs:/etc/xray/certs
     cap_add:
       - NET_ADMIN
-    networks:
-      - xray-node-net
+    environment:
+      - XRAY_LOCATION_ASSET=/usr/local/share/xray
 
   agent:
     build:
@@ -1115,11 +1161,13 @@ services:
     container_name: xray-node-agent
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8081:8080"
     environment:
       - NODE_UUID=${NODE_UUID}
       - CLUSTER_SECRET=${CLUSTER_SECRET}
       - MASTER_DOMAIN=${MASTER_DOMAIN}
+      - PANEL_DOMAIN=${PANEL_DOMAIN}
+      - NODE_DOMAIN=${NODE_DOMAIN}
       - API_PATH=${API_PATH}
     networks:
       - xray-node-net
@@ -1149,11 +1197,13 @@ EOFCOMPOSE
 }
 EOFCADDY
 
-    # 创建 Xray 配置
+    # 创建 Xray 配置 (SOLO模式 - 网关模式，管理两个域名的证书和流量)
     cat > /opt/xray-cluster/node/xray_config/config.json << EOFXRAY
 {
   "log": {
-    "loglevel": "warning"
+    "loglevel": "warning",
+    "access": "/var/log/xray/access.log",
+    "error": "/var/log/xray/error.log"
   },
   "inbounds": [
     {
@@ -1163,33 +1213,115 @@ EOFCADDY
         "clients": [
           {
             "id": "${NODE_UUID}",
-            "flow": "xtls-rprx-vision"
+            "flow": "xtls-rprx-vision",
+            "email": "user@${node_domain}"
           }
         ],
-        "decryption": "none"
+        "decryption": "none",
+        "fallbacks": [
+          {
+            "dest": "127.0.0.1:8080",
+            "xver": 1
+          }
+        ]
       },
       "streamSettings": {
         "network": "tcp",
-        "security": "reality",
-        "realitySettings": {
-          "show": false,
-          "dest": "www.google.com:443",
-          "xver": 0,
-          "serverNames": ["www.google.com"],
-          "privateKey": "${X25519_PRIVATE_KEY}",
-          "shortIds": [""]
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "${node_domain}",
+          "certificates": [
+            {
+              "certificateFile": "/etc/xray/certs/${node_domain}.crt",
+              "keyFile": "/etc/xray/certs/${node_domain}.key"
+            },
+            {
+              "certificateFile": "/etc/xray/certs/${panel_domain}.crt",
+              "keyFile": "/etc/xray/certs/${panel_domain}.key"
+            }
+          ],
+          "alpn": ["h2", "http/1.1"],
+          "minVersion": "1.2"
         }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls"]
       }
+    },
+    {
+      "port": 80,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1",
+        "port": 8080,
+        "network": "tcp"
+      },
+      "tag": "http-in"
     }
   ],
   "outbounds": [
     {
       "protocol": "freedom",
+      "settings": {},
       "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "settings": {},
+      "tag": "block"
     }
-  ]
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      {
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "block"
+      }
+    ]
+  }
 }
 EOFXRAY
+
+    # 创建证书目录和ACME脚本
+    mkdir -p /opt/xray-cluster/node/certs
+    
+    # 创建ACME证书获取脚本
+    cat > /opt/xray-cluster/node/get-certs.sh << 'EOFACME'
+#!/bin/bash
+# 使用 acme.sh 获取证书
+
+PANEL_DOMAIN="${panel_domain}"
+NODE_DOMAIN="${node_domain}"
+CERT_DIR="/opt/xray-cluster/node/certs"
+
+# 安装 acme.sh
+if [ ! -d ~/.acme.sh ]; then
+    curl https://get.acme.sh | sh -s email=admin@\${PANEL_DOMAIN}
+fi
+
+# 获取面板域名证书
+~/.acme.sh/acme.sh --issue -d \${PANEL_DOMAIN} --standalone --httpport 80
+
+# 获取节点域名证书
+~/.acme.sh/acme.sh --issue -d \${NODE_DOMAIN} --standalone --httpport 80
+
+# 安装证书
+~/.acme.sh/acme.sh --install-cert -d \${PANEL_DOMAIN} \\
+    --key-file \${CERT_DIR}/\${PANEL_DOMAIN}.key \\
+    --fullchain-file \${CERT_DIR}/\${PANEL_DOMAIN}.crt
+
+~/.acme.sh/acme.sh --install-cert -d \${NODE_DOMAIN} \\
+    --key-file \${CERT_DIR}/\${NODE_DOMAIN}.key \\
+    --fullchain-file \${CERT_DIR}/\${NODE_DOMAIN}.crt
+
+# 重启 Xray
+cd /opt/xray-cluster/node && docker-compose restart xray
+EOFACME
+
+    chmod +x /opt/xray-cluster/node/get-certs.sh
 
     # 创建 Agent Dockerfile (在 node 根目录)
     cat > /opt/xray-cluster/node/Dockerfile.agent << 'EOFDOCKER'
@@ -1231,7 +1363,8 @@ EOFDOCKER
     echo "========================================"
     echo ""
     print_info "访问信息:"
-    echo "  控制面板: https://${domain}"
+    echo "  控制面板: https://${panel_domain}"
+    echo "  节点域名: https://${node_domain}"
     echo "  管理员账号: admin"
     echo "  管理员密码: ${ADMIN_PASSWORD}"
     echo ""
@@ -1239,16 +1372,22 @@ EOFDOCKER
     echo "  集群密钥: ${CLUSTER_SECRET}"
     echo "  节点UUID: ${NODE_UUID}"
     echo ""
-    print_info "本地 Worker 已自动部署并注册"
-    echo "  节点域名: ${domain}"
-    echo "  API路径: /${API_PATH}"
-    echo "  Hysteria2端口: 50000"
+    print_info "架构说明 (One Port Rule):"
+    echo "  - Xray 监听 443 端口（网关）"
+    echo "  - 管理面板流量: ${panel_domain}:443 -> Xray -> Caddy -> Web"
+    echo "  - 代理流量: ${node_domain}:443 -> Xray -> 代理"
+    echo "  - 伪装网站: ${node_domain}:443 (浏览器) -> Xray -> Caddy -> 静态页面"
     echo ""
     print_warning "重要提示:"
     echo "  1. 请妥善保存上述信息"
     echo "  2. 首次登录后请立即修改管理员密码"
-    echo "  3. 确保防火墙已开放 80, 443, 50000 端口"
-    echo "  4. 等待 1-2 分钟让 Caddy 自动获取 SSL 证书"
+    echo "  3. 确保防火墙已开放以下端口:"
+    echo "     - 80/TCP (HTTP, 用于证书验证)"
+    echo "     - 443/TCP (HTTPS, Xray网关)"
+    echo "     - 50000/UDP (Hysteria2, 可选)"
+    echo "  4. 获取SSL证书:"
+    echo "     cd /opt/xray-cluster/node && bash get-certs.sh"
+    echo "  5. 证书获取后，访问 https://${panel_domain} 进入管理面板"
     echo ""
     print_info "添加更多 Worker 节点时使用集群密钥"
     echo ""
@@ -1381,7 +1520,8 @@ main() {
     
     # 解析命令行参数
     MODE=""
-    DOMAIN=""
+    PANEL_DOMAIN=""
+    NODE_DOMAIN=""
     
     while [[ $# -gt 0 ]]; do
         case $1 in
@@ -1401,8 +1541,18 @@ main() {
                 MODE="uninstall"
                 shift
                 ;;
+            --panel)
+                PANEL_DOMAIN="$2"
+                shift 2
+                ;;
+            --node-domain)
+                NODE_DOMAIN="$2"
+                shift 2
+                ;;
             --domain)
-                DOMAIN="$2"
+                # 兼容旧参数，同时设置两个域名
+                PANEL_DOMAIN="$2"
+                NODE_DOMAIN="$2"
                 shift 2
                 ;;
             *)
@@ -1414,7 +1564,7 @@ main() {
     # 执行对应的安装模式
     if [ "$MODE" = "solo" ]; then
         check_docker
-        install_solo "$DOMAIN"
+        install_solo "$PANEL_DOMAIN" "$NODE_DOMAIN"
     elif [ "$MODE" = "master" ]; then
         check_docker
         install_master

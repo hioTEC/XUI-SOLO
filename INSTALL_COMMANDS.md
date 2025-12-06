@@ -2,13 +2,16 @@
 
 ## Quick Reference
 
-### ✅ Recommended: One-Line Installation with Domain
+### ✅ Recommended: One-Line Installation with Two Domains
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/hioTEC/XUI-SOLO/main/install.sh?$(date +%s)" | sudo bash -s -- --solo --domain your-domain.com
+curl -fsSL "https://raw.githubusercontent.com/hioTEC/XUI-SOLO/main/install.sh?$(date +%s)" | \
+  sudo bash -s -- --solo --panel panel.example.com --node-domain node.example.com
 ```
 
-Replace `your-domain.com` with your actual domain.
+Replace domains with your actual domains:
+- `panel.example.com` - Admin control panel domain
+- `node.example.com` - Proxy node domain
 
 ---
 
