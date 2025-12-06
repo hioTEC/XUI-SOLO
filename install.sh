@@ -1148,13 +1148,20 @@ services:
     restart: unless-stopped
     network_mode: host
     volumes:
-      - /opt/xray-cluster/node/xray_config:/etc/xray:ro
-      - /opt/xray-cluster/node/certs:/etc/xray/certs:ro
-      - /opt/xray-cluster/node/logs:/var/log/xray
+      - type: bind
+        source: /opt/xray-cluster/node/xray_config/config.json
+        target: /etc/xray/config.json
+        read_only: true
+      - type: bind
+        source: /opt/xray-cluster/node/certs
+        target: /certs
+        read_only: true
+      - type: bind
+        source: /opt/xray-cluster/node/logs
+        target: /var/log/xray
     cap_add:
       - NET_ADMIN
-    environment:
-      - XRAY_LOCATION_ASSET=/usr/local/share/xray
+    command: ["xray", "run", "-config", "/etc/xray/config.json"]
 
   agent:
     build:
@@ -1229,12 +1236,12 @@ EOFCADDY
           "serverName": "${node_domain}",
           "certificates": [
             {
-              "certificateFile": "/etc/xray/certs/${node_domain}.crt",
-              "keyFile": "/etc/xray/certs/${node_domain}.key"
+              "certificateFile": "/certs/${node_domain}.crt",
+              "keyFile": "/certs/${node_domain}.key"
             },
             {
-              "certificateFile": "/etc/xray/certs/${panel_domain}.crt",
-              "keyFile": "/etc/xray/certs/${panel_domain}.key"
+              "certificateFile": "/certs/${panel_domain}.crt",
+              "keyFile": "/certs/${panel_domain}.key"
             }
           ],
           "alpn": ["h2", "http/1.1"],
@@ -1316,6 +1323,14 @@ cd /opt/xray-cluster/node && docker-compose restart xray
 EOFACME
 
     chmod +x /opt/xray-cluster/node/get-certs.sh
+    
+    # 创建占位符证书文件（避免挂载失败）
+    print_info "创建占位符证书文件..."
+    touch /opt/xray-cluster/node/certs/${panel_domain}.crt
+    touch /opt/xray-cluster/node/certs/${panel_domain}.key
+    touch /opt/xray-cluster/node/certs/${node_domain}.crt
+    touch /opt/xray-cluster/node/certs/${node_domain}.key
+    chmod 600 /opt/xray-cluster/node/certs/*.key
 
     # 创建 Agent Dockerfile (在 node 根目录)
     cat > /opt/xray-cluster/node/Dockerfile.agent << 'EOFDOCKER'
