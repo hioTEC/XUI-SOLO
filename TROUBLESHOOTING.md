@@ -1,6 +1,66 @@
 # 故障排查指南 - 无法访问面板
 
-## 问题：Safari浏览器无法打开页面
+## 问题 1：浏览器提示"请求资源的方式不安全"
+
+**错误信息**：
+- Chrome: "您的连接不是私密连接" / "NET::ERR_CERT_AUTHORITY_INVALID"
+- Firefox: "警告：潜在的安全风险"
+- Safari: "此连接不是私密连接"
+- Edge: "您的连接不是专用连接"
+
+**原因**：安装脚本默认生成自签名SSL证书，浏览器不信任这些证书。
+
+**解决方案**：
+
+### 方案 A：接受自签名证书（快速测试）
+
+1. 在浏览器警告页面点击「高级」或「详细信息」
+2. 点击「继续访问」或「接受风险并继续」
+3. 即可正常访问面板
+
+### 方案 B：获取正式SSL证书（推荐）
+
+```bash
+# 停止 Xray（释放 80 端口）
+cd /opt/xray-cluster/node
+docker-compose stop xray
+
+# 获取证书
+bash get-certs.sh
+
+# 重启服务
+docker-compose start xray
+```
+
+### 方案 C：重新生成自签名证书（如果证书损坏）
+
+```bash
+cd /opt/xray-cluster/node/certs
+
+# 为面板域名生成证书（替换为你的域名）
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout panel.example.com.key \
+  -out panel.example.com.crt \
+  -subj "/CN=panel.example.com"
+
+# 为节点域名生成证书
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout node.example.com.key \
+  -out node.example.com.crt \
+  -subj "/CN=node.example.com"
+
+# 设置权限
+chmod 600 *.key
+chmod 644 *.crt
+
+# 重启 Xray
+cd /opt/xray-cluster/node
+docker-compose restart xray
+```
+
+---
+
+## 问题 2：Safari浏览器无法打开页面
 
 错误信息：`Safari浏览器无法打开页面"https://panel.hiomath.org"，因为服务器意外中断了连接`
 

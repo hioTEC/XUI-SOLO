@@ -1417,13 +1417,27 @@ EOFACME
 
     chmod +x /opt/xray-cluster/node/get-certs.sh
     
-    # 创建占位符证书文件（避免挂载失败）
-    print_info "创建占位符证书文件..."
-    touch /opt/xray-cluster/node/certs/${panel_domain}.crt
-    touch /opt/xray-cluster/node/certs/${panel_domain}.key
-    touch /opt/xray-cluster/node/certs/${node_domain}.crt
-    touch /opt/xray-cluster/node/certs/${node_domain}.key
+    # 生成自签名证书（临时使用，后续可用 acme.sh 替换）
+    print_info "生成自签名 SSL 证书..."
+    
+    # 为面板域名生成证书
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /opt/xray-cluster/node/certs/${panel_domain}.key \
+        -out /opt/xray-cluster/node/certs/${panel_domain}.crt \
+        -subj "/C=US/ST=State/L=City/O=Organization/CN=${panel_domain}" \
+        2>/dev/null
+    
+    # 为节点域名生成证书
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+        -keyout /opt/xray-cluster/node/certs/${node_domain}.key \
+        -out /opt/xray-cluster/node/certs/${node_domain}.crt \
+        -subj "/C=US/ST=State/L=City/O=Organization/CN=${node_domain}" \
+        2>/dev/null
+    
     chmod 600 /opt/xray-cluster/node/certs/*.key
+    chmod 644 /opt/xray-cluster/node/certs/*.crt
+    
+    print_success "自签名证书已生成（浏览器会显示警告，可忽略或稍后使用 acme.sh 获取正式证书）"
 
     # 创建 Agent Dockerfile (在 node 根目录)
     cat > /opt/xray-cluster/node/Dockerfile.agent << 'EOFDOCKER'
@@ -1499,9 +1513,12 @@ EOFDOCKER
     echo "     - 80/TCP (HTTP, 用于证书验证)"
     echo "     - 443/TCP (HTTPS, Xray网关)"
     echo "     - 50000/UDP (Hysteria2, 可选)"
-    echo "  4. 获取SSL证书:"
-    echo "     cd /opt/xray-cluster/node && bash get-certs.sh"
-    echo "  5. 证书获取后，访问 https://${panel_domain} 进入管理面板"
+    echo ""
+    print_info "SSL 证书说明:"
+    echo "  - 当前使用自签名证书（浏览器会显示安全警告）"
+    echo "  - 访问 https://${panel_domain} 时，点击「高级」->「继续访问」即可"
+    echo "  - 获取正式证书（推荐）:"
+    echo "    cd /opt/xray-cluster/node && bash get-certs.sh"
     echo ""
     print_info "添加更多 Worker 节点时使用集群密钥"
     echo ""
