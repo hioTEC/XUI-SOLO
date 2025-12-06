@@ -15,8 +15,8 @@
 #### 1. 克隆项目
 
 ```bash
-git clone https://github.com/your-repo/xray-cluster.git
-cd xray-cluster
+git clone https://github.com/hioTEC/XUI-SOLO.git
+cd XUI-SOLO
 ```
 
 #### 2. 创建虚拟环境
@@ -528,4 +528,4 @@ def new_page():
 
 - GitHub Issues: 报告bug和功能请求
 - GitHub Discussions: 技术讨论
-- Email: dev@example.com
+- Email: dev@hiotec.dev

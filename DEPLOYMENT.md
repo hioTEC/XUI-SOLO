@@ -15,7 +15,7 @@
 
 ```bash
 # 下载安装脚本
-wget https://raw.githubusercontent.com/your-repo/xray-cluster/main/install.sh
+wget https://raw.githubusercontent.com/hioTEC/XUI-SOLO/main/install.sh
 chmod +x install.sh
 
 # 安装Master节点
@@ -417,4 +417,4 @@ sudo rm -rf /opt/xray-cluster
 
 - 文档: [README.md](README.md)
 - 问题反馈: GitHub Issues
-- 安全问题: security@example.com
+- 安全问题: security@hiotec.dev

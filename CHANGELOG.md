@@ -66,11 +66,11 @@ The README now prominently features:
 
 ```bash
 # SOLO Mode (New!)
-curl -fsSL https://raw.githubusercontent.com/your-repo/xray-cluster/main/install.sh | sudo bash -s -- --solo
+curl -fsSL https://raw.githubusercontent.com/hioTEC/XUI-SOLO/main/install.sh | sudo bash -s -- --solo
 
 # Or with git clone
-git clone https://github.com/your-repo/xray-cluster.git
-cd xray-cluster
+git clone https://github.com/hioTEC/XUI-SOLO.git
+cd XUI-SOLO
 sudo bash install.sh --solo
 ```
 

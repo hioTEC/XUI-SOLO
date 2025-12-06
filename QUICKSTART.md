@@ -46,8 +46,8 @@ sudo chmod +x /usr/local/bin/docker-compose
 
 ```bash
 # 1. 下载项目
-git clone https://github.com/your-repo/xray-cluster.git
-cd xray-cluster
+git clone https://github.com/hioTEC/XUI-SOLO.git
+cd XUI-SOLO
 
 # 2. 运行安装脚本
 sudo bash install.sh --master
@@ -79,8 +79,8 @@ sudo bash install.sh --master
 
 ```bash
 # 1. 下载项目
-git clone https://github.com/your-repo/xray-cluster.git
-cd xray-cluster
+git clone https://github.com/hioTEC/XUI-SOLO.git
+cd XUI-SOLO
 
 # 2. 运行安装脚本
 sudo bash install.sh --node

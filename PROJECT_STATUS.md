@@ -352,7 +352,7 @@ docker-compose exec postgres pg_dump -U xray_admin xray_cluster > backup.sql
 
 - **文档**: 查看项目文档目录
 - **问题反馈**: GitHub Issues
-- **安全问题**: security@example.com
+- **安全问题**: security@hiotec.dev
 
 ## 🎉 项目总结
 

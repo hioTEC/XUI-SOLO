@@ -40,11 +40,11 @@
 
 ```bash
 # 下载并运行SOLO一键部署脚本
-curl -fsSL https://raw.githubusercontent.com/your-repo/xray-cluster/main/install.sh | sudo bash -s -- --solo
+curl -fsSL https://raw.githubusercontent.com/hioTEC/XUI-SOLO/main/install.sh | sudo bash -s -- --solo
 
 # 或者克隆后安装
-git clone https://github.com/your-repo/xray-cluster.git
-cd xray-cluster
+git clone https://github.com/hioTEC/XUI-SOLO.git
+cd XUI-SOLO
 sudo bash install.sh --solo
 ```
 
@@ -69,11 +69,11 @@ sudo bash install.sh --solo
 
 ```bash
 # 在Master服务器上执行
-curl -fsSL https://raw.githubusercontent.com/your-repo/xray-cluster/main/install.sh | sudo bash -s -- --master
+curl -fsSL https://raw.githubusercontent.com/hioTEC/XUI-SOLO/main/install.sh | sudo bash -s -- --master
 
 # 或者
-git clone https://github.com/your-repo/xray-cluster.git
-cd xray-cluster
+git clone https://github.com/hioTEC/XUI-SOLO.git
+cd XUI-SOLO
 sudo bash install.sh --master
 ```
 
@@ -86,11 +86,11 @@ sudo bash install.sh --master
 
 ```bash
 # 在Worker服务器上执行
-curl -fsSL https://raw.githubusercontent.com/your-repo/xray-cluster/main/install.sh | sudo bash -s -- --node
+curl -fsSL https://raw.githubusercontent.com/hioTEC/XUI-SOLO/main/install.sh | sudo bash -s -- --node
 
 # 或者
-git clone https://github.com/your-repo/xray-cluster.git
-cd xray-cluster
+git clone https://github.com/hioTEC/XUI-SOLO.git
+cd XUI-SOLO
 sudo bash install.sh --node
 ```
 
@@ -581,7 +581,7 @@ docker-compose restart caddy
 
 1. 查看完整文档: [DEPLOYMENT.md](DEPLOYMENT.md)
 2. 收集日志: `docker-compose logs > debug.log`
-3. 提交Issue: [GitHub Issues](https://github.com/your-repo/xray-cluster/issues)
+3. 提交Issue: [GitHub Issues](https://github.com/hioTEC/XUI-SOLO/issues)
 4. 包含以下信息：
    - 操作系统版本
    - 部署模式（SOLO/分布式）
@@ -596,8 +596,8 @@ docker-compose restart caddy
 
 ```bash
 # 克隆项目
-git clone https://github.com/your-repo/xray-cluster.git
-cd xray-cluster
+git clone https://github.com/hioTEC/XUI-SOLO.git
+cd XUI-SOLO
 
 # 创建虚拟环境
 python3 -m venv venv
@@ -717,10 +717,10 @@ black master/app.py node/agent.py
 
 ## 📞 支持与反馈
 
-- **问题反馈**: [GitHub Issues](https://github.com/your-repo/xray-cluster/issues)
-- **功能建议**: [GitHub Discussions](https://github.com/your-repo/xray-cluster/discussions)
-- **安全问题**: security@example.com
-- **文档**: 查看 `docs/` 目录
+- **问题反馈**: [GitHub Issues](https://github.com/hioTEC/XUI-SOLO/issues)
+- **功能建议**: [GitHub Discussions](https://github.com/hioTEC/XUI-SOLO/discussions)
+- **安全问题**: security@hiotec.dev
+- **文档**: 查看项目文档目录
 
 ## ⚠️ 免责声明
 
@@ -736,6 +736,6 @@ black master/app.py node/agent.py
 
 Made with ❤️ by SOLO Team
 
-[快速开始](#-一键部署) • [查看文档](DEPLOYMENT.md) • [报告问题](https://github.com/your-repo/xray-cluster/issues)
+[快速开始](#-一键部署) • [查看文档](DEPLOYMENT.md) • [报告问题](https://github.com/hioTEC/XUI-SOLO/issues)
 
 </div>
