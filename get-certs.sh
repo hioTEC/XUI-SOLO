@@ -60,34 +60,34 @@ ACME_SH="$HOME/.acme.sh/acme.sh"
 "$ACME_SH" --set-default-ca --server letsencrypt
 
 if netstat -tlnp 2>/dev/null | grep -q ':80 ' || ss -tlnp 2>/dev/null | grep -q ':80 '; then
-    print_warning "端口 80 被占用，停止 Xray..."
+    print_info "停止 Xray..."
     cd /opt/xray-cluster/node && docker-compose stop xray
     sleep 3
 fi
 
-for domain in "$PANEL_DOMAIN" "$NODE_DOMAIN"; do
-    print_info "获取证书: $domain"
-    if ! "$ACME_SH" --issue -d "$domain" --standalone --httpport 80 --server letsencrypt; then
-        print_error "失败: $domain"
-        print_info "检查: 1) DNS解析 2) 端口80可访问 3) 防火墙"
-        print_info "运行 'dig $domain' 验证DNS"
-        exit 1
-    fi
-done
-
 mkdir -p "$CERT_DIR"
 
 for domain in "$PANEL_DOMAIN" "$NODE_DOMAIN"; do
-    "$ACME_SH" --install-cert -d "$domain" \
-        --key-file "$CERT_DIR/$domain.key" \
-        --fullchain-file "$CERT_DIR/$domain.crt" \
-        --reloadcmd "cd /opt/xray-cluster/node && docker-compose restart xray" 2>/dev/null
+    print_info "获取证书: $domain"
+    if "$ACME_SH" --issue -d "$domain" --standalone --httpport 80 --server letsencrypt; then
+        "$ACME_SH" --install-cert -d "$domain" \
+            --key-file "$CERT_DIR/$domain.key" \
+            --fullchain-file "$CERT_DIR/$domain.crt"
+        print_success "成功: $domain"
+    else
+        print_warning "Let's Encrypt 失败，使用自签名证书: $domain"
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout "$CERT_DIR/$domain.key" \
+            -out "$CERT_DIR/$domain.crt" \
+            -subj "/CN=$domain" 2>/dev/null
+    fi
 done
 
 chmod 600 "$CERT_DIR"/*.key
 chmod 644 "$CERT_DIR"/*.crt
 
 print_success "证书已安装: $CERT_DIR"
+ls -lh "$CERT_DIR"
 cd /opt/xray-cluster/node && docker-compose start xray
 sleep 3
 print_success "完成! 访问 https://$PANEL_DOMAIN"

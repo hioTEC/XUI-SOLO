@@ -1459,82 +1459,55 @@ else
     print_info "acme.sh 已安装"
 fi
 
-# 设置 acme.sh 路径
 ACME_SH="\$HOME/.acme.sh/acme.sh"
 
 if [ ! -f "\$ACME_SH" ]; then
-    print_error "acme.sh 未找到，请检查安装"
+    print_error "acme.sh 未找到"
     exit 1
 fi
 
-# 检查端口 80 是否被占用
+"\$ACME_SH" --set-default-ca --server letsencrypt
+
 if netstat -tlnp 2>/dev/null | grep -q ':80 ' || ss -tlnp 2>/dev/null | grep -q ':80 '; then
-    print_error "端口 80 已被占用，请先停止占用端口的服务"
-    print_info "提示：运行 'cd /opt/xray-cluster/node && docker-compose stop xray' 停止 Xray"
-    exit 1
+    print_info "停止 Xray 释放端口 80..."
+    cd /opt/xray-cluster/node && docker-compose stop xray
+    sleep 3
 fi
 
-# 获取面板域名证书
-print_info "获取面板域名证书: \$PANEL_DOMAIN"
-if "\$ACME_SH" --issue -d "\$PANEL_DOMAIN" --standalone --httpport 80 --force; then
-    print_success "面板域名证书获取成功"
-else
-    print_error "面板域名证书获取失败"
-    print_info "请检查："
-    print_info "  1. 域名 \$PANEL_DOMAIN 是否已解析到本服务器"
-    print_info "  2. 端口 80 是否可从公网访问"
-    print_info "  3. 防火墙是否已开放端口 80"
-    exit 1
-fi
+for domain in "\$PANEL_DOMAIN" "\$NODE_DOMAIN"; do
+    print_info "获取证书: \$domain"
+    if "\$ACME_SH" --issue -d "\$domain" --standalone --httpport 80 --server letsencrypt; then
+        print_success "证书获取成功: \$domain"
+    else
+        print_error "证书获取失败: \$domain"
+        print_info "使用自签名证书..."
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \\
+            -keyout "\$CERT_DIR/\$domain.key" \\
+            -out "\$CERT_DIR/\$domain.crt" \\
+            -subj "/CN=\$domain" 2>/dev/null
+    fi
+done
 
-# 获取节点域名证书
-print_info "获取节点域名证书: \$NODE_DOMAIN"
-if "\$ACME_SH" --issue -d "\$NODE_DOMAIN" --standalone --httpport 80 --force; then
-    print_success "节点域名证书获取成功"
-else
-    print_error "节点域名证书获取失败"
-    print_info "请检查："
-    print_info "  1. 域名 \$NODE_DOMAIN 是否已解析到本服务器"
-    print_info "  2. 端口 80 是否可从公网访问"
-    print_info "  3. 防火墙是否已开放端口 80"
-    exit 1
-fi
-
-# 创建证书目录
 mkdir -p "\$CERT_DIR"
 
-# 安装面板域名证书
-print_info "安装面板域名证书..."
-"\$ACME_SH" --install-cert -d "\$PANEL_DOMAIN" \\
-    --key-file "\$CERT_DIR/\$PANEL_DOMAIN.key" \\
-    --fullchain-file "\$CERT_DIR/\$PANEL_DOMAIN.crt" \\
-    --reloadcmd "cd /opt/xray-cluster/node && docker-compose restart xray"
+for domain in "\$PANEL_DOMAIN" "\$NODE_DOMAIN"; do
+    if [ -f "\$HOME/.acme.sh/\$domain/\$domain.cer" ]; then
+        print_info "安装证书: \$domain"
+        "\$ACME_SH" --install-cert -d "\$domain" \\
+            --key-file "\$CERT_DIR/\$domain.key" \\
+            --fullchain-file "\$CERT_DIR/\$domain.crt"
+    fi
+done
 
-# 安装节点域名证书
-print_info "安装节点域名证书..."
-"\$ACME_SH" --install-cert -d "\$NODE_DOMAIN" \\
-    --key-file "\$CERT_DIR/\$NODE_DOMAIN.key" \\
-    --fullchain-file "\$CERT_DIR/\$NODE_DOMAIN.crt" \\
-    --reloadcmd "cd /opt/xray-cluster/node && docker-compose restart xray"
+chmod 600 "\$CERT_DIR"/*.key 2>/dev/null
+chmod 644 "\$CERT_DIR"/*.crt 2>/dev/null
 
-# 设置权限
-chmod 600 "\$CERT_DIR"/*.key
-chmod 644 "\$CERT_DIR"/*.crt
-
-print_success "证书安装完成！"
-print_info "证书位置: \$CERT_DIR"
-print_info "证书将在 60 天后自动续期"
-
-# 验证证书
-print_info "验证证书..."
+print_success "证书已安装: \$CERT_DIR"
 ls -lh "\$CERT_DIR"
 
-# 重启 Xray
-print_info "重启 Xray 服务..."
-cd /opt/xray-cluster/node && docker-compose restart xray
-
-print_success "所有操作完成！"
-print_info "现在可以访问 https://\$PANEL_DOMAIN"
+cd /opt/xray-cluster/node && docker-compose start xray
+sleep 3
+print_success "完成! 访问 https://\$PANEL_DOMAIN"
 EOFACME
 
     chmod +x /opt/xray-cluster/node/get-certs.sh
