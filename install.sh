@@ -737,10 +737,24 @@ EOF
 
 # 安装 SOLO 模式（Master + 本地 Worker）
 install_solo() {
+    local domain="$1"
+    
     print_info "开始 SOLO 模式安装（Master + 本地 Worker 一体化部署）..."
     echo ""
     
-    read -p "请输入域名 (如 example.com): " domain
+    # 如果没有提供域名参数，则提示输入
+    if [ -z "$domain" ]; then
+        # 检查是否通过管道运行
+        if [ -t 0 ]; then
+            read -p "请输入域名 (如 example.com): " domain
+        else
+            print_error "检测到通过管道运行，必须提供域名参数"
+            print_info "使用方法: curl -fsSL ... | sudo bash -s -- --solo --domain your-domain.com"
+            print_info "或下载后运行: sudo bash install.sh --solo --domain your-domain.com"
+            exit 1
+        fi
+    fi
+    
     domain=$(echo "$domain" | tr -d ' ')
     
     if [ -z "$domain" ]; then
@@ -748,7 +762,14 @@ install_solo() {
         exit 1
     fi
     
-    check_dns "$domain"
+    print_info "使用域名: $domain"
+    
+    # DNS 检查（失败不退出）
+    check_dns "$domain" || {
+        print_warning "DNS 检查失败，但继续安装..."
+        print_warning "请确保域名已正确解析到本服务器 IP"
+        sleep 2
+    }
     
     # 生成集群密钥
     CLUSTER_SECRET=$(generate_random_string 32)
@@ -1289,16 +1310,48 @@ main() {
     fi
     
     # 解析命令行参数
-    if [ "$1" = "--solo" ]; then
+    MODE=""
+    DOMAIN=""
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --solo)
+                MODE="solo"
+                shift
+                ;;
+            --master)
+                MODE="master"
+                shift
+                ;;
+            --node)
+                MODE="node"
+                shift
+                ;;
+            --uninstall)
+                MODE="uninstall"
+                shift
+                ;;
+            --domain)
+                DOMAIN="$2"
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+    
+    # 执行对应的安装模式
+    if [ "$MODE" = "solo" ]; then
         check_docker
-        install_solo
-    elif [ "$1" = "--master" ]; then
+        install_solo "$DOMAIN"
+    elif [ "$MODE" = "master" ]; then
         check_docker
         install_master
-    elif [ "$1" = "--node" ]; then
+    elif [ "$MODE" = "node" ]; then
         check_docker
         install_node
-    elif [ "$1" = "--uninstall" ]; then
+    elif [ "$MODE" = "uninstall" ]; then
         uninstall_service
     else
         main_menu
