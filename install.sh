@@ -837,6 +837,76 @@ install_solo() {
         cd - > /dev/null
     fi
     
+    # 确保 requirements.txt 存在
+    if [ ! -f "/opt/xray-cluster/master/requirements.txt" ]; then
+        print_info "创建 requirements.txt..."
+        cat > /opt/xray-cluster/master/requirements.txt << 'EOFREQ'
+Flask==2.3.3
+Flask-SQLAlchemy==3.0.5
+Flask-Login==0.6.2
+Flask-Talisman==1.0.0
+psycopg2-binary==2.9.7
+redis==4.6.0
+requests==2.31.0
+python-dotenv==1.0.0
+gunicorn==21.2.0
+EOFREQ
+    fi
+    
+    if [ ! -f "/opt/xray-cluster/node/requirements.txt" ]; then
+        cp /opt/xray-cluster/master/requirements.txt /opt/xray-cluster/node/requirements.txt
+    fi
+    
+    # 确保 app.py 存在（创建最小版本）
+    if [ ! -f "/opt/xray-cluster/master/app.py" ]; then
+        print_warning "app.py 不存在，创建最小版本..."
+        cat > /opt/xray-cluster/master/app.py << 'EOFAPP'
+#!/usr/bin/env python3
+from flask import Flask, render_template, jsonify
+import os
+
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key')
+
+@app.route('/')
+def index():
+    return jsonify({
+        'status': 'ok',
+        'message': 'XUI-SOLO Master Node',
+        'version': '1.0.0'
+    })
+
+@app.route('/health')
+def health():
+    return jsonify({'status': 'healthy'})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+EOFAPP
+    fi
+    
+    # 确保 agent.py 存在（创建最小版本）
+    if [ ! -f "/opt/xray-cluster/node/agent.py" ]; then
+        print_warning "agent.py 不存在，创建最小版本..."
+        cat > /opt/xray-cluster/node/agent.py << 'EOFAGENT'
+#!/usr/bin/env python3
+from flask import Flask, jsonify
+import os
+
+app = Flask(__name__)
+
+@app.route('/health')
+def health():
+    return jsonify({
+        'status': 'ok',
+        'node_uuid': os.environ.get('NODE_UUID', 'unknown')
+    })
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
+EOFAGENT
+    fi
+    
     # 创建 Master .env 文件
     cat > /opt/xray-cluster/master/.env << EOF
 # Master 配置
@@ -916,7 +986,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: web/Dockerfile
+      dockerfile: Dockerfile.web
     container_name: xray-master-web
     restart: unless-stopped
     depends_on:
@@ -965,17 +1035,17 @@ ${domain} {
 }
 EOFCADDY
 
-    # 创建 Web Dockerfile
-    cat > /opt/xray-cluster/master/web/Dockerfile << 'EOFDOCKER'
+    # 创建 Web Dockerfile (在 master 根目录)
+    cat > /opt/xray-cluster/master/Dockerfile.web << 'EOFDOCKER'
 FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY ../requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ../app.py .
-COPY ../templates ./templates
+COPY app.py .
+COPY templates ./templates
 
 EXPOSE 5000
 
@@ -1041,7 +1111,7 @@ services:
   agent:
     build:
       context: .
-      dockerfile: agent/Dockerfile
+      dockerfile: Dockerfile.agent
     container_name: xray-node-agent
     restart: unless-stopped
     ports:
@@ -1121,14 +1191,14 @@ EOFCADDY
 }
 EOFXRAY
 
-    # 创建 Agent Dockerfile
-    cat > /opt/xray-cluster/node/agent/Dockerfile << 'EOFDOCKER'
+    # 创建 Agent Dockerfile (在 node 根目录)
+    cat > /opt/xray-cluster/node/Dockerfile.agent << 'EOFDOCKER'
 FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY ../agent.py .
-COPY ../requirements.txt .
+COPY agent.py .
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 EXPOSE 8080
