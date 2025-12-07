@@ -1513,27 +1513,31 @@ EOFACME
 
     chmod +x /opt/xray-cluster/node/get-certs.sh
     
-    print_info "生成自签名 SSL 证书..."
-    
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout /opt/xray-cluster/node/certs/${panel_domain}.key \
-        -out /opt/xray-cluster/node/certs/${panel_domain}.crt \
-        -subj "/C=US/ST=State/L=City/O=Organization/CN=${panel_domain}" \
-        2>/dev/null
-    
-    openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout /opt/xray-cluster/node/certs/${node_domain}.key \
-        -out /opt/xray-cluster/node/certs/${node_domain}.crt \
-        -subj "/C=US/ST=State/L=City/O=Organization/CN=${node_domain}" \
-        2>/dev/null
+    if [ -f "/opt/xray-cluster/node/certs/${panel_domain}.crt" ] && [ -f "/opt/xray-cluster/node/certs/${node_domain}.crt" ]; then
+        print_info "检测到现有 SSL 证书，保留使用"
+    else
+        print_info "生成自签名 SSL 证书..."
+        
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /opt/xray-cluster/node/certs/${panel_domain}.key \
+            -out /opt/xray-cluster/node/certs/${panel_domain}.crt \
+            -subj "/C=US/ST=State/L=City/O=Organization/CN=${panel_domain}" \
+            2>/dev/null
+        
+        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /opt/xray-cluster/node/certs/${node_domain}.key \
+            -out /opt/xray-cluster/node/certs/${node_domain}.crt \
+            -subj "/C=US/ST=State/L=City/O=Organization/CN=${node_domain}" \
+            2>/dev/null
+        
+        print_success "自签名证书已生成"
+    fi
     
     chmod 755 /opt/xray-cluster/node/certs
-    chmod 644 /opt/xray-cluster/node/certs/*.key
-    chmod 644 /opt/xray-cluster/node/certs/*.crt
+    chmod 644 /opt/xray-cluster/node/certs/*.key 2>/dev/null || true
+    chmod 644 /opt/xray-cluster/node/certs/*.crt 2>/dev/null || true
     
     chmod 777 /opt/xray-cluster/node/logs
-    
-    print_success "自签名证书已生成"
 
     # 创建 Agent Dockerfile (在 node 根目录)
     cat > /opt/xray-cluster/node/Dockerfile.agent << 'EOFDOCKER'
