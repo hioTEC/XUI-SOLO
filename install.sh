@@ -1056,14 +1056,12 @@ services:
     image: caddy:2-alpine
     container_name: xray-master-caddy
     restart: unless-stopped
-    ports:
-      - "80:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      - xray-master-net
+      - xray-net
     environment:
       - CADDY_EMAIL=${CADDY_EMAIL}
 
@@ -1078,7 +1076,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     networks:
-      - xray-master-net
+      - xray-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
@@ -1093,7 +1091,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - xray-master-net
+      - xray-net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -1119,11 +1117,11 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
     networks:
-      - xray-master-net
+      - xray-net
 
 networks:
-  xray-master-net:
-    driver: bridge
+  xray-net:
+    external: true
 
 volumes:
   postgres_data:
@@ -1235,8 +1233,7 @@ services:
       - /opt/xray-cluster/node/certs:/certs:ro
       - /opt/xray-cluster/node/logs:/var/log/xray
     networks:
-      - default
-      - xray-master-net
+      - xray-net
     command: ["run", "-config", "/etc/xray/config.json"]
 
   agent:
@@ -1255,13 +1252,11 @@ services:
       - NODE_DOMAIN=${NODE_DOMAIN}
       - API_PATH=${API_PATH}
     networks:
-      - default
+      - xray-net
 
 networks:
-  default:
+  xray-net:
     driver: bridge
-  xray-master-net:
-    external: true
 EOFCOMPOSE
 
     # 创建 Node Caddyfile
@@ -1560,6 +1555,9 @@ EOFDOCKER
         cd /opt/xray-cluster/master && docker-compose down 2>/dev/null || true
         cd /opt/xray-cluster/node && docker-compose down 2>/dev/null || true
     fi
+    
+    print_info "创建共享 Docker 网络..."
+    docker network create xray-net 2>/dev/null || print_info "网络 xray-net 已存在"
     
     print_info "启动 Master 控制面板..."
     cd /opt/xray-cluster/master
