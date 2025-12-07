@@ -1513,8 +1513,13 @@ EOFACME
 
     chmod +x /opt/xray-cluster/node/get-certs.sh
     
-    if [ -f "/opt/xray-cluster/node/certs/${panel_domain}.crt" ] && [ -f "/opt/xray-cluster/node/certs/${node_domain}.crt" ]; then
+    PANEL_CERT="/opt/xray-cluster/node/certs/${panel_domain}.crt"
+    NODE_CERT="/opt/xray-cluster/node/certs/${node_domain}.crt"
+    
+    if [ -f "$PANEL_CERT" ] && [ -f "$NODE_CERT" ] && [ -f "${PANEL_CERT%.crt}.key" ] && [ -f "${NODE_CERT%.crt}.key" ]; then
         print_info "检测到现有 SSL 证书，保留使用"
+        print_info "  面板证书: $(ls -lh $PANEL_CERT | awk '{print $6,$7,$8}')"
+        print_info "  节点证书: $(ls -lh $NODE_CERT | awk '{print $6,$7,$8}')"
     else
         print_info "生成自签名 SSL 证书..."
         
