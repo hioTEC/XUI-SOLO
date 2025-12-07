@@ -1134,8 +1134,13 @@ EOFCOMPOSE
 
     # 创建 Master Caddyfile (SOLO模式 - 内部路由器，监听80，支持h2c)
     cat > /opt/xray-cluster/master/Caddyfile << EOFCADDY
+{
+    servers :80 {
+        protocols h1 h2c
+    }
+}
+
 :80 {
-    protocols h1 h2c
     
     @panel host ${panel_domain}
     handle @panel {
@@ -1229,6 +1234,9 @@ services:
       - /opt/xray-cluster/node/xray_config/config.json:/etc/xray/config.json:ro
       - /opt/xray-cluster/node/certs:/certs:ro
       - /opt/xray-cluster/node/logs:/var/log/xray
+    networks:
+      - default
+      - xray-master-net
     command: ["run", "-config", "/etc/xray/config.json"]
 
   agent:
@@ -1246,10 +1254,14 @@ services:
       - PANEL_DOMAIN=${PANEL_DOMAIN}
       - NODE_DOMAIN=${NODE_DOMAIN}
       - API_PATH=${API_PATH}
+    networks:
+      - default
 
 networks:
   default:
     driver: bridge
+  xray-master-net:
+    external: true
 EOFCOMPOSE
 
     # 创建 Node Caddyfile
@@ -1288,12 +1300,12 @@ EOFCADDY
         "decryption": "none",
         "fallbacks": [
           {
-            "dest": "172.17.0.1:80",
+            "dest": "xray-master-caddy:80",
             "xver": 1
           },
           {
             "alpn": "h2",
-            "dest": "172.17.0.1:80",
+            "dest": "xray-master-caddy:80",
             "xver": 1
           }
         ]
