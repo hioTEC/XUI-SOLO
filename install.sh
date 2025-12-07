@@ -335,7 +335,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     networks:
-      - xray-master-net
+      - xray-net
     environment:
       - CADDY_EMAIL=${CADDY_EMAIL}
 
@@ -350,7 +350,7 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     networks:
-      - xray-master-net
+      - xray-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
@@ -365,7 +365,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - xray-master-net
+      - xray-net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -398,10 +398,10 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
     networks:
-      - xray-master-net
+      - xray-net
 
 networks:
-  xray-master-net:
+  xray-net:
     driver: bridge
 
 volumes:
