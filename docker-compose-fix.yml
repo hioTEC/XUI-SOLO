@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  xray:
+    image: ghcr.io/xtls/xray-core:latest
+    container_name: xray-node-xray
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - /opt/xray-cluster/node/xray_config/config.json:/etc/xray/config.json:ro
+      - /opt/xray-cluster/node/certs:/certs:ro
+      - /opt/xray-cluster/node/logs:/var/log/xray
+    command: ["run", "-config", "/etc/xray/config.json"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - xray-net
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: xray-node-agent
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      - NODE_UUID=${NODE_UUID}
+      - CLUSTER_SECRET=${CLUSTER_SECRET}
+      - MASTER_DOMAIN=${MASTER_DOMAIN}
+      - PANEL_DOMAIN=${PANEL_DOMAIN}
+      - NODE_DOMAIN=${NODE_DOMAIN}
+      - API_PATH=${API_PATH}
+    networks:
+      - xray-net
+
+networks:
+  xray-net:
+    driver: bridge

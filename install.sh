@@ -1057,7 +1057,7 @@ services:
     container_name: xray-master-caddy
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"
+      - "8080:8080"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -1287,7 +1287,7 @@ EOFCADDY
         "decryption": "none",
         "fallbacks": [
           {
-            "dest": "127.0.0.1:8080",
+            "dest": "172.17.0.1:8080",
             "xver": 1
           }
         ]
