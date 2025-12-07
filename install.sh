@@ -1221,21 +1221,13 @@ services:
     image: ghcr.io/xtls/xray-core:latest
     container_name: xray-node-xray
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "443:443"
+      - "80:80"
     volumes:
-      - type: bind
-        source: /opt/xray-cluster/node/xray_config/config.json
-        target: /etc/xray/config.json
-        read_only: true
-      - type: bind
-        source: /opt/xray-cluster/node/certs
-        target: /certs
-        read_only: true
-      - type: bind
-        source: /opt/xray-cluster/node/logs
-        target: /var/log/xray
-    cap_add:
-      - NET_ADMIN
+      - /opt/xray-cluster/node/xray_config/config.json:/etc/xray/config.json:ro
+      - /opt/xray-cluster/node/certs:/certs:ro
+      - /opt/xray-cluster/node/logs:/var/log/xray
     command: ["run", "-config", "/etc/xray/config.json"]
 
   agent:
@@ -1253,13 +1245,9 @@ services:
       - PANEL_DOMAIN=${PANEL_DOMAIN}
       - NODE_DOMAIN=${NODE_DOMAIN}
       - API_PATH=${API_PATH}
-    networks:
-      - xray-node-net
-    depends_on:
-      - xray
 
 networks:
-  xray-node-net:
+  default:
     driver: bridge
 EOFCOMPOSE
 
@@ -1526,10 +1514,13 @@ EOFACME
         -subj "/C=US/ST=State/L=City/O=Organization/CN=${node_domain}" \
         2>/dev/null
     
-    chmod 600 /opt/xray-cluster/node/certs/*.key
+    chmod 755 /opt/xray-cluster/node/certs
+    chmod 644 /opt/xray-cluster/node/certs/*.key
     chmod 644 /opt/xray-cluster/node/certs/*.crt
     
-    print_success "自签名证书已生成（浏览器会显示警告，可忽略或稍后使用 acme.sh 获取正式证书）"
+    chmod 777 /opt/xray-cluster/node/logs
+    
+    print_success "自签名证书已生成"
 
     # 创建 Agent Dockerfile (在 node 根目录)
     cat > /opt/xray-cluster/node/Dockerfile.agent << 'EOFDOCKER'
