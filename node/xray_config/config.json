@@ -28,6 +28,11 @@
             "xver": 1
           },
           {
+            "alpn": "h2",
+            "dest": 80,
+            "xver": 1
+          },
+          {
             "path": "/${API_PATH}",
             "dest": 8080,
             "xver": 1
@@ -38,7 +43,7 @@
         "network": "tcp",
         "security": "tls",
         "tlsSettings": {
-          "alpn": ["http/1.1"],
+          "alpn": ["h2", "http/1.1"],
           "certificates": [
             {
               "certificateFile": "/etc/xray/cert.pem",

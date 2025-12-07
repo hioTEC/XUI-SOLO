@@ -555,6 +555,11 @@ EOF
             "xver": 1
           },
           {
+            "alpn": "h2",
+            "dest": 80,
+            "xver": 1
+          },
+          {
             "path": "/${API_PATH}",
             "dest": 8080,
             "xver": 1
@@ -570,6 +575,7 @@ EOF
         "network": "tcp",
         "security": "tls",
         "tlsSettings": {
+          "alpn": ["h2", "http/1.1"],
           "rejectUnknownSni": true,
           "minVersion": "1.2",
           "cipherSuites": "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
@@ -758,14 +764,28 @@ volumes:
 EOF
     
     cat > /opt/xray-cluster/node/Caddyfile << EOF
+{
+    # 全局配置块
+    servers :80 {
+        # 强制开启 h1 和 h2c 支持
+        # 如果不加 h2c，Xray 发来的解密 h2 流量会被 Caddy 拒收，导致空响应
+        protocols h1 h2c
+    }
+}
+
 :80 {
     encode gzip
+    
+    # 允许来自 Xray 的反代流量保持原样
+    header_up Host {host}
+    header_up X-Forwarded-Proto https
     
     handle_path /${API_PATH}/* {
         reverse_proxy agent:8080
     }
     
-    respond "404 Not Found" 404
+    # 伪装网站内容
+    respond "Welcome to my personal blog!" 200
 }
 EOF
     
@@ -1261,14 +1281,28 @@ EOFCOMPOSE
 
     # 创建 Node Caddyfile
     cat > /opt/xray-cluster/node/Caddyfile << EOFCADDY
+{
+    # 全局配置块
+    servers :80 {
+        # 强制开启 h1 和 h2c 支持
+        # 如果不加 h2c，Xray 发来的解密 h2 流量会被 Caddy 拒收，导致空响应
+        protocols h1 h2c
+    }
+}
+
 :80 {
     encode gzip
+    
+    # 允许来自 Xray 的反代流量保持原样
+    header_up Host {host}
+    header_up X-Forwarded-Proto https
     
     handle_path /${API_PATH}/* {
         reverse_proxy agent:8080
     }
     
-    respond "404 Not Found" 404
+    # 伪装网站内容
+    respond "Welcome to my personal blog!" 200
 }
 EOFCADDY
 
