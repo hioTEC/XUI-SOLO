@@ -1288,7 +1288,6 @@ EOFCADDY
         "clients": [
           {
             "id": "${NODE_UUID}",
-            "flow": "xtls-rprx-vision",
             "email": "user@${node_domain}"
           }
         ],
