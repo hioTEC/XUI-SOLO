@@ -1533,9 +1533,10 @@ EOFACME
         print_success "自签名证书已生成"
     fi
     
+    print_info "设置证书权限..."
     chmod 755 /opt/xray-cluster/node/certs
-    chmod 644 /opt/xray-cluster/node/certs/*.key 2>/dev/null || true
-    chmod 644 /opt/xray-cluster/node/certs/*.crt 2>/dev/null || true
+    chmod 644 /opt/xray-cluster/node/certs/* 2>/dev/null || true
+    chown -R root:root /opt/xray-cluster/node/certs 2>/dev/null || true
     
     chmod 777 /opt/xray-cluster/node/logs
 
