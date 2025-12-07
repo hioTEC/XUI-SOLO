@@ -1057,7 +1057,7 @@ services:
     container_name: xray-master-caddy
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "80:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -1132,9 +1132,10 @@ volumes:
   caddy_config:
 EOFCOMPOSE
 
-    # 创建 Master Caddyfile (SOLO模式 - 内部路由器，监听8080)
+    # 创建 Master Caddyfile (SOLO模式 - 内部路由器，监听80，支持h2c)
     cat > /opt/xray-cluster/master/Caddyfile << EOFCADDY
-:8080 {
+:80 {
+    protocols h1 h2c
     
     @panel host ${panel_domain}
     handle @panel {
@@ -1287,7 +1288,12 @@ EOFCADDY
         "decryption": "none",
         "fallbacks": [
           {
-            "dest": "172.17.0.1:8080",
+            "dest": "172.17.0.1:80",
+            "xver": 1
+          },
+          {
+            "alpn": "h2",
+            "dest": "172.17.0.1:80",
             "xver": 1
           }
         ]
