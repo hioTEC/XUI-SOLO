@@ -402,7 +402,7 @@ services:
 
 networks:
   xray-net:
-    driver: bridge
+    external: true
 
 volumes:
   postgres_data:
@@ -1256,7 +1256,7 @@ services:
 
 networks:
   xray-net:
-    driver: bridge
+    external: true
 EOFCOMPOSE
 
     # 创建 Node Caddyfile
