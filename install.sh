@@ -1554,21 +1554,62 @@ EOFACME
         print_info "  面板证书: $(ls -lh $PANEL_CERT | awk '{print $6,$7,$8}')"
         print_info "  节点证书: $(ls -lh $NODE_CERT | awk '{print $6,$7,$8}')"
     else
-        print_info "生成自签名 SSL 证书..."
+        # 询问是否自动申请证书
+        print_info "是否现在申请 Let's Encrypt 免费证书？(推荐)"
+        print_info "注意: 需要确保域名已正确解析到本机 IP，且 80 端口开放"
+        read -p "是否申请？(y/n): " -n 1 -r
+        echo
         
-        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout /opt/xray-cluster/node/certs/${panel_domain}.key \
-            -out /opt/xray-cluster/node/certs/${panel_domain}.crt \
-            -subj "/C=US/ST=State/L=City/O=Organization/CN=${panel_domain}" \
-            2>/dev/null
+        GOT_CERTS=false
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            print_info "正在申请证书..."
+            # 确保脚本有执行权限
+            chmod +x /opt/xray-cluster/node/get-certs.sh
+            
+            # 运行证书脚本
+            if cd /opt/xray-cluster/node && ./get-certs.sh; then
+                if [ -f "$PANEL_CERT" ] && [ -f "$NODE_CERT" ]; then
+                    GOT_CERTS=true
+                    print_success "证书申请成功！"
+                else
+                    print_error "证书脚本运行完成但未找到证书文件"
+                fi
+            else
+                print_error "证书申请失败"
+            fi
+        fi
         
-        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout /opt/xray-cluster/node/certs/${node_domain}.key \
-            -out /opt/xray-cluster/node/certs/${node_domain}.crt \
-            -subj "/C=US/ST=State/L=City/O=Organization/CN=${node_domain}" \
-            2>/dev/null
-        
-        print_success "自签名证书已生成"
+        if [ "$GOT_CERTS" = true ]; then
+            print_info "使用 Let's Encrypt 证书，保持 HTTP/2 (h2) 开启"
+        else
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                print_warning "证书申请失败，将回退到自签名证书"
+            else
+                print_info "用户跳过证书申请，使用自签名证书"
+            fi
+            
+            print_info "生成自签名 SSL 证书..."
+            
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /opt/xray-cluster/node/certs/${panel_domain}.key \
+                -out /opt/xray-cluster/node/certs/${panel_domain}.crt \
+                -subj "/C=US/ST=State/L=City/O=Organization/CN=${panel_domain}" \
+                2>/dev/null
+            
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /opt/xray-cluster/node/certs/${node_domain}.key \
+                -out /opt/xray-cluster/node/certs/${node_domain}.crt \
+                -subj "/C=US/ST=State/L=City/O=Organization/CN=${node_domain}" \
+                2>/dev/null
+            
+            print_success "自签名证书已生成"
+            
+            # 关键修复: 自签名证书下，Safari 等浏览器不支持 HTTP/2
+            # 必须从 alpn 中移除 "h2"
+            print_warning "检测到使用自签名证书，正在禁用 HTTP/2 以修复 Safari 兼容性..."
+            sed -i 's/"alpn": \["h2", "http\/1.1"\]/"alpn": \["http\/1.1"\]/g' /opt/xray-cluster/node/xray_config/config.json
+            print_success "已禁用 HTTP/2 (仅使用 HTTP/1.1)"
+        fi
     fi
     
     print_info "设置证书权限..."
