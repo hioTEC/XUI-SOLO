@@ -551,19 +551,19 @@ EOF
         "decryption": "none",
         "fallbacks": [
           {
-            "dest": 80,
+            "dest": 80
           },
           {
             "alpn": "h2",
-            "dest": 80,
+            "dest": 80
           },
           {
             "path": "/${API_PATH}",
-            "dest": 8080,
+            "dest": 8080
           },
           {
             "path": "/${SPLIT_HTTP_PATH}",
-            "dest": 10000,
+            "dest": 10000
           }
         ]
       },
@@ -1324,11 +1324,11 @@ EOFCADDY
         "decryption": "none",
         "fallbacks": [
           {
-            "dest": "xray-master-caddy:80",
+            "dest": "xray-master-caddy:80"
           },
           {
             "alpn": "h2",
-            "dest": "xray-master-caddy:80",
+            "dest": "xray-master-caddy:80"
           }
         ]
       },
