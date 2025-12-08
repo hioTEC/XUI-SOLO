@@ -552,22 +552,18 @@ EOF
         "fallbacks": [
           {
             "dest": 80,
-            "xver": 1
           },
           {
             "alpn": "h2",
             "dest": 80,
-            "xver": 1
           },
           {
             "path": "/${API_PATH}",
             "dest": 8080,
-            "xver": 1
           },
           {
             "path": "/${SPLIT_HTTP_PATH}",
             "dest": 10000,
-            "xver": 1
           }
         ]
       },
@@ -1329,12 +1325,10 @@ EOFCADDY
         "fallbacks": [
           {
             "dest": "xray-master-caddy:80",
-            "xver": 1
           },
           {
             "alpn": "h2",
             "dest": "xray-master-caddy:80",
-            "xver": 1
           }
         ]
       },
