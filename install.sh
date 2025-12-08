@@ -997,6 +997,11 @@ EOFREQ
         cp /opt/xray-cluster/master/requirements.txt /opt/xray-cluster/node/requirements.txt
     fi
     
+    # Copy requirements.txt to web directory for Docker build
+    if [ ! -f "/opt/xray-cluster/master/web/requirements.txt" ]; then
+        cp /opt/xray-cluster/master/requirements.txt /opt/xray-cluster/master/web/requirements.txt
+    fi
+    
     if [ ! -f "/opt/xray-cluster/master/app.py" ]; then
         print_warning "app.py 不存在，创建最小版本..."
         cat > /opt/xray-cluster/master/app.py << 'EOFAPP'
@@ -1064,7 +1069,7 @@ CADDY_EMAIL=admin@$panel_domain
 EOF
     
     print_info "创建 Master 配置文件..."
-    cat > /opt/xray-cluster/master/docker-compose.yml << 'EOFCOMPOSE'
+    cat > /opt/xray-cluster/master/docker-compose.yml << EOFCOMPOSE
 version: '3.8'
 
 services:
@@ -1079,7 +1084,7 @@ services:
     networks:
       - xray-net
     environment:
-      - CADDY_EMAIL=${CADDY_EMAIL}
+      - CADDY_EMAIL=\${CADDY_EMAIL}
 
   postgres:
     image: postgres:15-alpine
@@ -1088,13 +1093,13 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=\${POSTGRES_USER}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
+      - POSTGRES_DB=\${POSTGRES_DB}
     networks:
       - xray-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U \${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -1103,7 +1108,7 @@ services:
     image: redis:7-alpine
     container_name: xray-master-redis
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass \${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     networks:
@@ -1116,22 +1121,25 @@ services:
 
   web:
     build:
-      context: .
-      dockerfile: Dockerfile.web
+      context: ./web
+      dockerfile: Dockerfile
     container_name: xray-master-web
     restart: unless-stopped
+    volumes:
+      - ./app.py:/app/app.py:ro
+      - ./templates:/app/templates:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
-      - MASTER_DOMAIN=${MASTER_DOMAIN}
-      - CLUSTER_SECRET=${CLUSTER_SECRET}
-      - ADMIN_USER=${ADMIN_USER}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - MASTER_DOMAIN=\${MASTER_DOMAIN}
+      - CLUSTER_SECRET=\${CLUSTER_SECRET}
+      - ADMIN_USER=\${ADMIN_USER}
+      - ADMIN_PASSWORD=\${ADMIN_PASSWORD}
+      - DATABASE_URL=postgresql://\${POSTGRES_USER}:\${POSTGRES_PASSWORD}@postgres:5432/\${POSTGRES_DB}
+      - REDIS_URL=redis://:\${REDIS_PASSWORD}@redis:6379/0
     networks:
       - xray-net
 
@@ -1197,22 +1205,7 @@ EOFCOMPOSE
 }
 EOFCADDY
 
-    # 创建 Web Dockerfile (在 master 根目录)
-    cat > /opt/xray-cluster/master/Dockerfile.web << 'EOFDOCKER'
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY app.py .
-COPY templates ./templates
-
-EXPOSE 5000
-
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "app:app"]
-EOFDOCKER
+    # Web Dockerfile already exists in master/web/Dockerfile
     
     cat > /opt/xray-cluster/node/.env << EOF
 NODE_DOMAIN=$node_domain
@@ -1233,7 +1226,7 @@ CADDY_EMAIL=admin@$node_domain
 EOF
     
     print_info "创建 Worker 配置文件..."
-    cat > /opt/xray-cluster/node/docker-compose.yml << 'EOFCOMPOSE'
+    cat > /opt/xray-cluster/node/docker-compose.yml << EOFCOMPOSE
 version: '3.8'
 
 services:
@@ -1261,12 +1254,12 @@ services:
     ports:
       - "127.0.0.1:8081:8080"
     environment:
-      - NODE_UUID=${NODE_UUID}
-      - CLUSTER_SECRET=${CLUSTER_SECRET}
-      - MASTER_DOMAIN=${MASTER_DOMAIN}
-      - PANEL_DOMAIN=${PANEL_DOMAIN}
-      - NODE_DOMAIN=${NODE_DOMAIN}
-      - API_PATH=${API_PATH}
+      - NODE_UUID=\${NODE_UUID}
+      - CLUSTER_SECRET=\${CLUSTER_SECRET}
+      - MASTER_DOMAIN=\${MASTER_DOMAIN}
+      - PANEL_DOMAIN=\${PANEL_DOMAIN}
+      - NODE_DOMAIN=\${NODE_DOMAIN}
+      - API_PATH=\${API_PATH}
     networks:
       - xray-net
 
