@@ -148,7 +148,8 @@ def get_xray_stats():
 def register_to_master():
     """向Master注册节点"""
     try:
-        url = f"https://{MASTER_DOMAIN}/api/node/register"
+        base_url = MASTER_DOMAIN if "://" in MASTER_DOMAIN else f"https://{MASTER_DOMAIN}"
+        url = f"{base_url}/api/node/register"
         data = {
             'token': NODE_UUID,
             'timestamp': int(time.time())
@@ -178,7 +179,8 @@ def send_heartbeat():
         return False
     
     try:
-        url = f"https://{MASTER_DOMAIN}/api/node/heartbeat"
+        base_url = MASTER_DOMAIN if "://" in MASTER_DOMAIN else f"https://{MASTER_DOMAIN}"
+        url = f"{base_url}/api/node/heartbeat"
         data = {
             'node_id': node_status['node_id'],
             'api_secret': node_status['api_secret'],
